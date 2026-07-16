@@ -1,177 +1,283 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { ArrowLeft, Search, Calendar, CheckSquare } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Search, Calendar, CheckSquare, ChevronDown } from 'lucide-react';
+import BottomNav from '../components/BottomNav';
+import { tasksApi, usersApi, projectsApi } from '../services/api';
+import { getEntityId } from '../utils/id';
+import { isAdmin } from '../utils/task';
+import type { User, Project } from '../types';
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px 32px 12px 0',
+  fontSize: 15,
+  border: 'none',
+  borderBottom: '1px solid #e5e7eb',
+  borderRadius: 0,
+  backgroundColor: 'transparent',
+  cursor: 'pointer',
+  outline: 'none',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
+  appearance: 'none',
+  color: '#111827',
+};
 
 const CreateTask = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [users, setUsers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     assignedTo: '',
-    project: 'Phoenix Project',
-    priority: 'High',
-    deadline: ''
+    project: '',
+    priority: 'HIGH',
+    deadline: '',
+    parentTaskId: '',
+    dependsOn: '',
+    milestoneId: '',
   });
+
+  const loadOptions = useCallback(async () => {
+    setLoadingOptions(true);
+    setLoadError('');
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setLoadError('Please log in again to load assignees and projects.');
+        return;
+      }
+
+      const [usersRes, projectsRes] = await Promise.all([
+        isAdmin() ? usersApi.getAll() : usersApi.getAssignees(),
+        projectsApi.getAll(),
+      ]);
+
+      const userList = Array.isArray(usersRes.data) ? usersRes.data : [];
+      const projectList = Array.isArray(projectsRes.data) ? projectsRes.data : [];
+
+      setUsers(userList);
+      setProjects(projectList);
+
+      const preselectedAssignee = searchParams.get('assignedTo') || '';
+      const preselectedProject = searchParams.get('project') || '';
+      const preselectedParent = searchParams.get('parentTaskId') || '';
+
+      setFormData((prev) => ({
+        ...prev,
+        assignedTo: preselectedAssignee,
+        project: preselectedProject,
+        parentTaskId: preselectedParent,
+      }));
+    } catch (err) {
+      console.error('Failed to load form data', err);
+      setLoadError('Could not load assignees or projects. Make sure the backend is running on port 5000.');
+    } finally {
+      setLoadingOptions(false);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    loadOptions();
+  }, [loadOptions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.assignedTo) {
+      alert('Please select an assignee.');
+      return;
+    }
+    if (!formData.project) {
+      alert('Please select a project.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      const token = localStorage.getItem('token');
-      await axios.post('http://localhost:5000/tasks', formData, {
-        headers: { Authorization: `Bearer ${token}` }
+      await tasksApi.create({
+        title: formData.title,
+        description: formData.description,
+        assignedTo: formData.assignedTo,
+        projectId: formData.project,
+        priority: formData.priority,
+        deadline: formData.deadline || undefined,
+        parentTaskId: formData.parentTaskId || undefined,
+        dependsOn: formData.dependsOn
+          ? formData.dependsOn.split(',').map((s) => s.trim()).filter(Boolean)
+          : undefined,
+        milestoneId: formData.milestoneId || undefined,
       });
-      navigate('/dashboard');
+      navigate(`/tasks/user/${formData.assignedTo}`);
     } catch (error) {
       console.error('Failed to create task', error);
-      alert('Failed to create task');
+      alert('Failed to create task. Check assignee and project are selected.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  const assigneePlaceholder = loadingOptions ? 'Loading assignees...' : 'Select assignee';
+  const projectPlaceholder = loadingOptions ? 'Loading projects...' : 'Select project';
+
   return (
     <>
-      <div className="app-container" style={{ padding: '0', backgroundColor: '#f9fafb', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        
-        {/* Top App Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', backgroundColor: '#fff', borderBottom: '1px solid #f3f4f6' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', color: '#b45309' }} onClick={() => navigate(-1)}>
+      <BottomNav />
+      <div className="app-container create-task-page">
+        <div className="create-task-header">
+          <button type="button" className="create-task-back" onClick={() => navigate(-1)}>
             <ArrowLeft size={24} />
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Create Task</h2>
-          </div>
-          <div style={{ cursor: 'pointer', color: '#4b5563' }}>
-            <Search size={24} />
-          </div>
+            <h2>Create Task</h2>
+          </button>
+          <Search size={22} color="#9ca3af" />
         </div>
 
-        {/* Form Content */}
-        <div style={{ padding: '24px', flex: 1, display: 'flex', justifyContent: 'center' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '600px', padding: '32px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
-            <form onSubmit={handleSubmit}>
-              
-              <div className="form-group" style={{ marginBottom: 24 }}>
-                <label className="form-label" style={{ color: '#4b5563', marginBottom: 12 }}>Task Name</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  style={{ border: 'none', borderBottom: '1px solid #e5e7eb', borderRadius: 0, padding: '12px 0', fontSize: 15 }}
-                  value={formData.title}
-                  onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  placeholder="Enter task name..."
-                  required
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 24 }}>
-                <label className="form-label" style={{ color: '#4b5563', marginBottom: 12 }}>Description</label>
-                <textarea 
-                  className="form-input" 
-                  style={{ border: 'none', borderBottom: '1px solid #e5e7eb', borderRadius: 0, padding: '12px 0', fontSize: 15, minHeight: 80, resize: 'none' }}
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  placeholder="Add detailed notes about this task..."
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 24 }}>
-                <label className="form-label" style={{ color: '#4b5563', marginBottom: 12 }}>Assigned To</label>
-                <select 
-                  className="form-input" 
-                  style={{ border: 'none', borderBottom: '1px solid #e5e7eb', borderRadius: 0, padding: '12px 0', fontSize: 15, backgroundColor: 'transparent', appearance: 'none', cursor: 'pointer' }}
-                  value={formData.assignedTo}
-                  onChange={(e) => setFormData({...formData, assignedTo: e.target.value})}
-                >
-                  <option value="" disabled>Select assignee</option>
-                  <option value="hari">Hariharan</option>
-                  <option value="gopi">Gopinath</option>
-                  <option value="jagan">Jaganathan</option>
-                </select>
-                <div style={{ position: 'absolute', right: 0, top: 40, pointerEvents: 'none' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 24 }}>
-                <label className="form-label" style={{ color: '#4b5563', marginBottom: 12 }}>Project</label>
-                <select 
-                  className="form-input" 
-                  style={{ border: 'none', borderBottom: '1px solid #e5e7eb', borderRadius: 0, padding: '12px 0', fontSize: 15, backgroundColor: 'transparent', appearance: 'none', cursor: 'pointer' }}
-                  value={formData.project}
-                  onChange={(e) => setFormData({...formData, project: e.target.value})}
-                >
-                  <option value="Phoenix Project">Phoenix Project</option>
-                  <option value="Tru Go">Tru Go</option>
-                  <option value="Steno Space">Steno Space</option>
-                </select>
-                <div style={{ position: 'absolute', right: 0, top: 40, pointerEvents: 'none' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 24 }}>
-                <label className="form-label" style={{ color: '#4b5563', marginBottom: 12 }}>Priority</label>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <button 
-                    type="button"
-                    onClick={() => setFormData({...formData, priority: 'High'})}
-                    style={{ 
-                      flex: 1, 
-                      padding: '12px', 
-                      borderRadius: 24, 
-                      border: formData.priority === 'High' ? '1px solid #fbbf24' : '1px solid transparent', 
-                      backgroundColor: formData.priority === 'High' ? '#fef3c7' : '#f3f4f6',
-                      color: formData.priority === 'High' ? '#b45309' : '#4b5563',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      gap: 8
-                    }}
-                  >
-                    <span style={{ fontWeight: 'bold' }}>!</span> High
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setFormData({...formData, priority: 'Low'})}
-                    style={{ 
-                      flex: 1, 
-                      padding: '12px', 
-                      borderRadius: 24, 
-                      border: formData.priority === 'Low' ? '1px solid #9ca3af' : '1px solid transparent', 
-                      backgroundColor: formData.priority === 'Low' ? '#e5e7eb' : '#f3f4f6',
-                      color: '#4b5563',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}
-                  >
-                    Low
-                  </button>
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 40 }}>
-                <label className="form-label" style={{ color: '#4b5563', marginBottom: 12 }}>Deadline</label>
-                <div style={{ position: 'relative', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center' }}>
-                  <Calendar size={20} color="#4b5563" style={{ marginRight: 12 }} />
-                  <input 
-                    type="date" 
-                    className="form-input" 
-                    style={{ border: 'none', borderRadius: 0, padding: '12px 0', fontSize: 15, flex: 1, backgroundColor: 'transparent' }}
-                    value={formData.deadline}
-                    onChange={(e) => setFormData({...formData, deadline: e.target.value})}
-                    placeholder="dd-mm-yyyy"
-                  />
-                </div>
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '14px 0', fontSize: 16, borderRadius: 8, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                Create Task <CheckSquare size={20} />
+        <div className="create-task-card card">
+          {loadError && (
+            <div className="create-task-error">
+              {loadError}
+              <button type="button" onClick={loadOptions}>
+                Retry
               </button>
-            </form>
-          </div>
+            </div>
+          )}
+
+          <form className="create-task-form" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="form-label">Task Name</label>
+              <input
+                type="text"
+                className="form-input create-task-input"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="Enter task name..."
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea
+                className="form-input create-task-input create-task-textarea"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Add detailed notes about this task..."
+              />
+            </div>
+
+            <div className="form-group" style={{ position: 'relative' }}>
+              <label className="form-label">Assigned To</label>
+              <select
+                className="form-input form-select-dark"
+                style={selectStyle}
+                value={formData.assignedTo}
+                onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
+                required
+                disabled={loadingOptions}
+              >
+                <option value="">{assigneePlaceholder}</option>
+                {users.map((u) => {
+                  const id = getEntityId(u);
+                  return (
+                    <option key={id} value={id}>
+                      {u.name}
+                    </option>
+                  );
+                })}
+              </select>
+              <ChevronDown
+                size={18}
+                style={{ position: 'absolute', right: 4, bottom: 14, pointerEvents: 'none', color: '#6b7280' }}
+              />
+            </div>
+
+            <div className="form-group" style={{ position: 'relative' }}>
+              <label className="form-label">Project</label>
+              <select
+                className="form-input form-select-dark"
+                style={selectStyle}
+                value={formData.project}
+                onChange={(e) => setFormData({ ...formData, project: e.target.value })}
+                required
+                disabled={loadingOptions}
+              >
+                <option value="">{projectPlaceholder}</option>
+                {projects.map((p) => {
+                  const id = getEntityId(p);
+                  return (
+                    <option key={id} value={id}>
+                      {p.name.trim()}
+                    </option>
+                  );
+                })}
+              </select>
+              <ChevronDown
+                size={18}
+                style={{ position: 'absolute', right: 4, bottom: 14, pointerEvents: 'none', color: '#6b7280' }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Priority</label>
+              <div className="create-task-priority">
+                {(
+                  [
+                    { key: 'HIGH', label: 'High', selected: { bg: '#fee2e2', border: '#ef4444', color: '#b91c1c' } },
+                    { key: 'MEDIUM', label: 'Medium', selected: { bg: '#fef3c7', border: '#f59e0b', color: '#b45309' } },
+                    { key: 'LOW', label: 'Low', selected: { bg: '#d1fae5', border: '#10b981', color: '#065f46' } },
+                  ] as const
+                ).map((p) => {
+                  const active = formData.priority === p.key;
+                  return (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, priority: p.key })}
+                      style={{
+                        flex: 1,
+                        padding: '14px',
+                        borderRadius: 24,
+                        border: active ? `1px solid ${p.selected.border}` : '1px solid #e5e7eb',
+                        backgroundColor: active ? p.selected.bg : '#f9fafb',
+                        color: active ? p.selected.color : '#6b7280',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {p.key === 'HIGH' && <span style={{ fontWeight: 'bold' }}>! </span>}
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Deadline</label>
+              <div className="create-task-deadline">
+                <Calendar size={20} color="#4b5563" />
+                <input
+                  type="date"
+                  className="form-input create-task-input"
+                  value={formData.deadline}
+                  onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting || loadingOptions || !!loadError}
+              className="btn btn-primary create-task-submit"
+            >
+              {submitting ? 'Creating...' : 'Create Task'} <CheckSquare size={20} />
+            </button>
+          </form>
         </div>
       </div>
     </>

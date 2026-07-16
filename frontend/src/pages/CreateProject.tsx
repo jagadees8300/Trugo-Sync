@@ -1,31 +1,63 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
 import { ArrowLeft } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
+import { projectsApi, usersApi } from '../services/api';
+import type { User } from '../types';
+
+const PROJECT_CATEGORIES = ['Frontend', 'Backend', 'UI', 'QA'] as const;
 
 const CreateProject = () => {
   const [name, setName] = useState('');
+  const [clientName, setClientName] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
+  const [startDate, setStartDate] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [users, setUsers] = useState<User[]>([]);
+  const [teamMembers, setTeamMembers] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    usersApi.getAssignees().then((res) => setUsers(res.data)).catch(console.error);
+  }, []);
+
+  const toggleMember = (id: string) => {
+    setTeamMembers((prev) =>
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id],
+    );
+  };
+
+  const toggleCategory = (cat: string) => {
+    setCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
+    );
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (categories.length === 0) {
+      alert('Select at least one project category');
+      return;
+    }
+    setSubmitting(true);
     try {
-      const token = localStorage.getItem('token');
-      await axios.post('http://localhost:5000/projects', {
+      await projectsApi.create({
         name,
+        clientName: clientName || undefined,
         description,
-        category,
-        deadline: new Date().toISOString()
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+        categories,
+        teamMembers,
+        startDate: startDate || undefined,
+        deadline: deadline || new Date().toISOString(),
       });
-      navigate('/dashboard');
+      navigate('/projects');
     } catch (error) {
       console.error('Failed to create project', error);
       alert('Failed to create project');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -34,85 +66,129 @@ const CreateProject = () => {
       <BottomNav />
       <div className="app-container">
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24, gap: 12 }}>
-          <Link to="/dashboard" style={{ color: 'var(--text-main)' }}>
+          <Link to="/projects" style={{ color: 'var(--text-main)' }}>
             <ArrowLeft size={24} />
           </Link>
           <h3 style={{ margin: 0 }}>Create Project</h3>
-          <div style={{ flex: 1 }}></div>
-          <div style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#eee', overflow: 'hidden' }}>
-            <img src="https://i.pravatar.cc/100?img=11" alt="Profile" style={{ width: '100%', height: '100%' }} />
-          </div>
         </div>
 
         <form onSubmit={handleCreate}>
           <div className="form-group">
             <label className="form-label">Project Name</label>
-            <input 
-              type="text" 
-              className="form-input" 
-              placeholder="Enter project title..." 
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Enter project title..."
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
 
           <div className="form-group">
+            <label className="form-label">Client Name</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Client or company name..."
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
             <label className="form-label">Description</label>
-            <textarea 
-              className="form-input" 
-              placeholder="Describe the project goals and scope..." 
+            <textarea
+              className="form-input"
+              placeholder="Describe the project goals and scope..."
               rows={4}
               value={description}
-              onChange={e => setDescription(e.target.value)}
+              onChange={(e) => setDescription(e.target.value)}
               style={{ resize: 'none' }}
-            ></textarea>
+            />
           </div>
 
           <div className="form-group">
             <label className="form-label">Project Category</label>
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-              {['Frontend', 'Backend', 'UI', 'QA'].map(cat => (
-                <button 
+            <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--text-muted)' }}>
+              Click to mention categories (required — select one or more)
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {PROJECT_CATEGORIES.map((cat) => {
+                const selected = categories.includes(cat);
+                return (
+                  <button
+                    type="button"
+                    key={cat}
+                    onClick={() => toggleCategory(cat)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 20,
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      backgroundColor: selected ? 'var(--primary)' : '#f3f4f6',
+                      color: selected ? '#fff' : '#6b7280',
+                    }}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Start Date</label>
+            <input
+              type="date"
+              className="form-input"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Deadline</label>
+            <input
+              type="date"
+              className="form-input"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginTop: 24 }}>
+            <label className="form-label">Team Members</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {users.map((u) => (
+                <button
+                  key={u._id}
                   type="button"
-                  key={cat}
-                  onClick={() => setCategory(cat)}
-                  style={{ 
-                    padding: '8px 16px', 
-                    borderRadius: 20, 
-                    border: category === cat ? '1px solid var(--primary)' : '1px solid #eee',
-                    background: category === cat ? '#fff9f0' : 'white',
-                    color: category === cat ? 'var(--primary)' : 'var(--text-muted)',
+                  onClick={() => toggleMember(u._id)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 20,
+                    border: 'none',
                     cursor: 'pointer',
-                    fontSize: 13
+                    fontSize: 13,
+                    backgroundColor: teamMembers.includes(u._id) ? 'var(--primary)' : '#f3f4f6',
+                    color: teamMembers.includes(u._id) ? '#fff' : '#6b7280',
                   }}
                 >
-                  {cat}
+                  {u.name}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="form-group" style={{ marginTop: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <label className="form-label" style={{ marginBottom: 0 }}>Team Members</label>
-              <span style={{ color: 'var(--primary)', fontSize: 12, fontWeight: 600 }}>+ Add Member</span>
-            </div>
-            <div className="card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ display: 'flex' }}>
-                <img src="https://i.pravatar.cc/100?img=12" alt="Hari" style={{ width: 32, height: 32, borderRadius: 16, border: '2px solid white', marginLeft: 0 }} />
-                <img src="https://i.pravatar.cc/100?img=13" alt="Gopi" style={{ width: 32, height: 32, borderRadius: 16, border: '2px solid white', marginLeft: -12 }} />
-                <img src="https://i.pravatar.cc/100?img=14" alt="Someone" style={{ width: 32, height: 32, borderRadius: 16, border: '2px solid white', marginLeft: -12 }} />
-                <div style={{ width: 32, height: 32, borderRadius: 16, border: '2px solid white', marginLeft: -12, background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 'bold' }}>
-                  +4
-                </div>
-              </div>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>7 People Assigned</span>
-            </div>
-          </div>
-
-          <button type="submit" className="btn btn-primary" style={{ marginTop: 24 }}>
-            Create Project 🚀
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ marginTop: 24 }}
+            disabled={submitting || categories.length === 0}
+          >
+            {submitting ? 'Creating...' : 'Create Project'}
           </button>
         </form>
       </div>

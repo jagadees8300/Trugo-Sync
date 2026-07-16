@@ -1,15 +1,34 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateUserDto {
-  @ApiProperty({ example: 'John Doe', description: 'The name of the user' })
+  @ApiProperty({ example: 'Gopinath', description: 'The name of the user' })
+  @IsString()
+  @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: 'john@example.com', description: 'The email of the user' })
+  @ApiProperty({ example: 'gopi@trugosync.com', description: 'Login email for the user' })
+  @IsEmail()
+  @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: 'password123', description: 'The password of the user' })
+  @ApiProperty({ example: 'password123', description: 'Initial password assigned by admin' })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(6)
   password: string;
 
-  @ApiProperty({ example: '60d0fe4f5311236168a109ca', description: 'The ID of the role', required: false })
-  role?: string;
+  @ApiProperty({ example: 'Field Agent', required: false })
+  @IsString()
+  @IsOptional()
+  designation?: string;
+
+  @ApiProperty({
+    example: 'EMPLOYEE',
+    required: false,
+    enum: ['ADMIN', 'HR', 'PROJECT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE'],
+  })
+  @IsOptional()
+  @IsIn(['ADMIN', 'HR', 'PROJECT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE'])
+  role?: 'ADMIN' | 'HR' | 'PROJECT_MANAGER' | 'TEAM_LEAD' | 'EMPLOYEE';
 }

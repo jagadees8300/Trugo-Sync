@@ -1,5 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsOptional, IsArray, IsDateString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsDateString,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+
+const PROJECT_CATEGORIES = ['Frontend', 'Backend', 'UI', 'QA'] as const;
 
 export class CreateProjectDto {
   @ApiProperty()
@@ -7,22 +17,37 @@ export class CreateProjectDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  clientName?: string;
+
+  @ApiPropertyOptional()
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  category?: string;
+  @ApiProperty({
+    type: [String],
+    enum: PROJECT_CATEGORIES,
+    description: 'Required: click/mention one or more categories',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Select at least one project category' })
+  @IsIn(PROJECT_CATEGORIES, { each: true })
+  categories: string[];
 
-  @ApiProperty({ required: false, type: [String] })
+  @ApiPropertyOptional({ type: [String] })
   @IsArray()
   @IsOptional()
   teamMembers?: string[];
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @ApiPropertyOptional()
   @IsDateString()
   @IsOptional()
   deadline?: string;

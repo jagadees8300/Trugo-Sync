@@ -1,89 +1,182 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Mail, Lock, Eye } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { authApi } from '../services/api';
+import BrandLogo from '../components/BrandLogo';
+import { getHomePathForRole } from '../utils/task';
 
 const Login = () => {
-  const [email, setEmail] = useState('admin@trugosync.com');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setLoading(true);
+
     try {
-      const response = await axios.post('http://localhost:5000/auth/login', {
-        email,
-        password
-      });
-      if (response.data.access_token) {
-        localStorage.setItem('token', response.data.access_token);
-        navigate('/dashboard');
+      const response = await authApi.login(email, password);
+      const { access_token, user } = response.data;
+
+      if (!access_token) {
+        setError('Login failed. Please try again.');
+        return;
       }
-    } catch (error) {
-      console.error('Login failed', error);
-      alert('Login failed. Please check your credentials.');
+
+      localStorage.setItem('token', access_token);
+      if (user) {
+        localStorage.setItem('user', JSON.stringify(user));
+      }
+
+      const role =
+        typeof user?.role === 'string' ? user.role : user?.role?.name ?? 'EMPLOYEE';
+      navigate(getHomePathForRole(role), { replace: true });
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const message = err.response?.data?.message;
+        setError(
+          typeof message === 'string'
+            ? message
+            : 'Invalid email or password. Please try again.',
+        );
+      } else {
+        setError('Unable to reach server. Make sure the backend is running on port 5000.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="app-container" style={{ justifyContent: 'center' }}>
-      <div className="text-center" style={{ marginBottom: '40px' }}>
-        <div style={{ background: 'var(--primary)', width: 48, height: 48, borderRadius: 12, margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    <div className="login-page">
+      <div className="login-page__inner">
+        <div className="login-page__brand">
+          <BrandLogo height={80} style={{ borderRadius: 12 }} />
         </div>
-        <h2>Admin Login</h2>
-        <p className="text-muted">Trugo Sync Productivity Workspace</p>
-      </div>
+        <h1 className="login-page__title">Admin Login</h1>
+        <p className="login-page__subtitle">Trugo Sync Productivity Workspace</p>
 
-      <form onSubmit={handleLogin}>
-        <div className="form-group">
-          <label className="form-label">Email Address</label>
-          <div style={{ position: 'relative' }}>
-            <Mail size={18} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-muted)' }} />
-            <input 
-              type="email" 
-              className="form-input" 
-              style={{ paddingLeft: 40 }} 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@trugosync.com"
-            />
+        {error && <div className="login-page__error">{error}</div>}
+
+        <form onSubmit={handleLogin} autoComplete="off">
+          <div className="form-group">
+            <label className="form-label" htmlFor="login-email">
+              Email Address
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Mail
+                size={18}
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <input
+                id="login-email"
+                type="email"
+                name="email"
+                className="form-input"
+                style={{ paddingLeft: 40 }}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter email"
+                autoComplete="off"
+                required
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="form-group">
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <label className="form-label">Password</label>
-            <span 
-              style={{ fontSize: 12, color: 'var(--primary)', cursor: 'pointer' }}
-              onClick={() => navigate('/forgot-password')}
+          <div className="form-group">
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 8,
+              }}
             >
-              Forgot Password?
-            </span>
+              <label className="form-label" htmlFor="login-password" style={{ marginBottom: 0 }}>
+                Password
+              </label>
+              <Link to="/forgot-password" className="login-page__forgot">
+                Forgot Password?
+              </Link>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <Lock
+                size={18}
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                className="form-input"
+                style={{ paddingLeft: 40, paddingRight: 40 }}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                autoComplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                }}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
-          <div style={{ position: 'relative' }}>
-            <Lock size={18} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-muted)' }} />
-            <input 
-              type="password" 
-              className="form-input" 
-              style={{ paddingLeft: 40, paddingRight: 40 }} 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="********"
-            />
-            <Eye size={18} style={{ position: 'absolute', right: 12, top: 12, color: 'var(--text-muted)', cursor: 'pointer' }} />
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ marginTop: 24 }}
+            disabled={loading}
+          >
+            {loading ? 'Logging in...' : 'Login to Dashboard →'}
+          </button>
+        </form>
+
+        <div className="login-page__footer">
+          <p className="login-page__footer-secure">
+            <Lock size={14} aria-hidden />
+            Secured Admin Access
+          </p>
+          <div className="login-page__footer-links">
+            <span>Privacy Policy</span>
+            &nbsp;·&nbsp;
+            <span>Support</span>
           </div>
-        </div>
-
-        <button type="submit" className="btn btn-primary" style={{ marginTop: '24px' }}>
-          Login to Dashboard &rarr;
-        </button>
-      </form>
-
-      <div style={{ textAlign: 'center', marginTop: '40px', fontSize: 12, color: 'var(--text-muted)' }}>
-        <p>🔒 SECURED ADMIN ACCESS</p>
-        <div style={{ marginTop: 16 }}>
-          <span>Privacy Policy</span> &nbsp;&middot;&nbsp; <span>Support</span>
         </div>
       </div>
     </div>

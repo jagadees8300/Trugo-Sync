@@ -1,10 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import mongoose, { HydratedDocument } from 'mongoose';
-import { Role } from '../../roles/schemas/role.schema';
+import { HydratedDocument } from 'mongoose';
 
 export type UserDocument = HydratedDocument<User>;
 
-@Schema()
+@Schema({ timestamps: { createdAt: true, updatedAt: false } })
 export class User {
   @Prop({ required: true })
   name: string;
@@ -12,16 +11,26 @@ export class User {
   @Prop({ required: true, unique: true })
   email: string;
 
-  @Prop({ required: true })
-  password?: string;
+  @Prop({ required: true, select: false })
+  password: string;
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Role' })
-  role: Role;
+  @Prop({
+    required: true,
+    enum: ['ADMIN', 'HR', 'PROJECT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE'],
+    default: 'EMPLOYEE',
+  })
+  role: 'ADMIN' | 'HR' | 'PROJECT_MANAGER' | 'TEAM_LEAD' | 'EMPLOYEE';
 
   @Prop()
+  designation?: string;
+
+  @Prop()
+  avatarUrl?: string;
+
+  @Prop({ select: false })
   resetPasswordToken?: string;
 
-  @Prop()
+  @Prop({ select: false })
   resetPasswordExpires?: Date;
 }
 
