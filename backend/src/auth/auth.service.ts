@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { randomBytes } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { LoginDto } from '../users/dto/login.dto';
@@ -42,9 +43,7 @@ export class AuthService {
   }
 
   async forgotPassword(email: string) {
-    const token =
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
+    const token = randomBytes(24).toString('hex');
     const updated = await this.usersService.setResetToken(email, token);
 
     if (!updated) {
@@ -54,8 +53,10 @@ export class AuthService {
       };
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const resetLink = `${frontendUrl}/reset-password?token=${token}`;
+    const frontendUrl = (
+      process.env.FRONTEND_URL || 'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const resetLink = `${frontendUrl}/reset-password/${token}`;
 
     const mailResult = await this.mailService.sendPasswordResetEmail(
       email,
@@ -74,6 +75,16 @@ export class AuthService {
         'If that email is in our database, we will send a password reset link to it.',
       emailSent: false,
     };
+  }
+
+  async validateResetToken(token: string) {
+    const user = await this.usersService.findByResetToken(token);
+    if (!user) {
+      throw new UnauthorizedException(
+        'This reset link was already used or has expired. Please login with your new password, or request a new link.',
+      );
+    }
+    return { valid: true, email: (user as { email?: string }).email };
   }
 
   async resetPassword(token: string, newPassword: string) {

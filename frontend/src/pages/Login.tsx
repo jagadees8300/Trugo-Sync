@@ -1,22 +1,36 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { authApi } from '../services/api';
 import BrandLogo from '../components/BrandLogo';
 import { getHomePathForRole } from '../utils/task';
 
+type LoginLocationState = {
+  email?: string;
+  resetSuccess?: boolean;
+  message?: string;
+};
+
 const Login = () => {
-  const [email, setEmail] = useState('');
+  const location = useLocation();
+  const navState = (location.state || {}) as LoginLocationState;
+  const [email, setEmail] = useState(navState.email || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(
+    navState.resetSuccess
+      ? navState.message || 'Password saved successfully. Login with your new password.'
+      : null,
+  );
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     setLoading(true);
 
     try {
@@ -61,6 +75,20 @@ const Login = () => {
         <h1 className="login-page__title">Admin Login</h1>
         <p className="login-page__subtitle">Trugo Sync Productivity Workspace</p>
 
+        {info && (
+          <div
+            style={{
+              padding: 12,
+              marginBottom: 16,
+              borderRadius: 8,
+              background: '#ecfdf5',
+              color: '#065f46',
+              fontSize: 14,
+            }}
+          >
+            {info}
+          </div>
+        )}
         {error && <div className="login-page__error">{error}</div>}
 
         <form onSubmit={handleLogin} autoComplete="off">

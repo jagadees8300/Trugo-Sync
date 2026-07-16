@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft } from 'lucide-react';
 import { authApi } from '../services/api';
+import BrandLogo from '../components/BrandLogo';
 
 interface ForgotPasswordResponse {
   message: string;
@@ -30,17 +31,15 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
-      <div className="card" style={{ width: '100%', maxWidth: '400px', padding: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24, gap: 12 }}>
-          <Link to="/login" style={{ color: 'var(--text-main)' }}>
-            <ArrowLeft size={24} />
-          </Link>
-          <h2 style={{ margin: 0 }}>Reset Password</h2>
+    <div className="login-page">
+      <div className="login-page__inner">
+        <div className="login-page__brand">
+          <BrandLogo height={80} style={{ borderRadius: 12 }} />
         </div>
-
-        <p className="text-muted" style={{ marginBottom: '24px' }}>
-          Enter your email address and we'll send you a link to reset your password.
+        <h1 className="login-page__title">Forgot Password</h1>
+        <p className="login-page__subtitle">
+          Enter your email and click Send Reset Link. Then open the email and
+          create your new password there.
         </p>
 
         {result && (
@@ -57,7 +56,8 @@ const ForgotPassword = () => {
             <p style={{ margin: 0 }}>{result.message}</p>
             {result.emailSent && (
               <p style={{ margin: '8px 0 0 0', fontSize: 13 }}>
-                Check your inbox and spam folder.
+                Check inbox and spam folder. Click{' '}
+                <strong>Create New Password</strong> in the email only.
               </p>
             )}
           </div>
@@ -65,25 +65,53 @@ const ForgotPassword = () => {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">Email Address</label>
+            <label className="form-label" htmlFor="forgot-email">
+              Email Address
+            </label>
             <div style={{ position: 'relative' }}>
-              <Mail size={18} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-muted)' }} />
+              <Mail
+                size={18}
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                  pointerEvents: 'none',
+                }}
+              />
               <input
+                id="forgot-email"
                 type="email"
                 className="form-input"
                 style={{ paddingLeft: 40 }}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder="Enter email"
                 required
               />
             </div>
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ marginTop: '16px' }} disabled={loading}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ width: '100%', marginTop: 8 }}
+            disabled={loading}
+          >
             {loading ? 'Sending...' : 'Send Reset Link'}
           </button>
         </form>
+
+        <p style={{ marginTop: 20, textAlign: 'center' }}>
+          <Link
+            to="/login"
+            className="login-page__forgot"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <ArrowLeft size={16} /> Back to Admin Login
+          </Link>
+        </p>
       </div>
     </div>
   );

@@ -228,9 +228,11 @@ export class UsersService implements OnModuleInit {
   }
 
   async login(loginDto: LoginDto): Promise<any> {
-    const { email, password } = loginDto;
+    const email = loginDto.email.trim().toLowerCase();
+    const { password } = loginDto;
+    const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const user = await this.userModel
-      .findOne({ email: email.trim().toLowerCase() })
+      .findOne({ email: new RegExp(`^${escaped}$`, 'i') })
       .select('+password')
       .exec();
 
@@ -264,8 +266,9 @@ export class UsersService implements OnModuleInit {
     const expires = new Date();
     expires.setHours(expires.getHours() + 1);
 
+    const normalized = email.trim().toLowerCase();
     const result = await this.userModel.updateOne(
-      { email },
+      { email: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
       {
         $set: {
           resetPasswordToken: token,
@@ -273,28 +276,41 @@ export class UsersService implements OnModuleInit {
         },
       },
     );
-    return result.modifiedCount > 0;
+    return result.matchedCount > 0;
+  }
+
+  async findByResetToken(token: string) {
+    const normalized = token.trim();
+    return this.userModel
+      .findOne({
+        resetPasswordToken: normalized,
+        resetPasswordExpires: { $gt: new Date() },
+      })
+      .select('+resetPasswordToken +resetPasswordExpires')
+      .lean();
   }
 
   async resetPassword(token: string, newPassword: string): Promise<boolean> {
+    const normalized = token.trim();
     const user = await this.userModel
       .findOne({
-        resetPasswordToken: token,
+        resetPasswordToken: normalized,
         resetPasswordExpires: { $gt: new Date() },
       })
       .select('+password +resetPasswordToken +resetPasswordExpires');
 
     if (!user) {
-      throw new UnauthorizedException('Invalid or expired token');
+      throw new UnauthorizedException(
+        'This reset link was already used or has expired. Please login with your new password, or request a new link.',
+      );
     }
 
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
     user.password = hashedPassword;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-
+    user.set('resetPasswordToken', undefined);
+    user.set('resetPasswordExpires', undefined);
     await user.save();
     return true;
   }

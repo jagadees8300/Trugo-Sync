@@ -123,18 +123,18 @@ export class MailService implements OnModuleInit {
         subject: forwarded
           ? `Trugo Sync - Password Reset for ${to}`
           : 'Trugo Sync - Password Reset',
-        text: `You requested a password reset.\n\n${resetLink}\n\nThis link expires in 1 hour.`,
+        text: `You requested a password reset.\n\nOpen this link to create a new password:\n${resetLink}\n\nThis link expires in 1 hour.`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 480px;">
             <h2 style="color: #ff9800;">Trugo Sync</h2>
             ${forwardNote}
-            <p>Click below to reset your password:</p>
+            <p>Click below to create your new password:</p>
             <p>
               <a href="${resetLink}" style="display:inline-block;padding:12px 24px;background:#ff9800;color:#fff;text-decoration:none;border-radius:8px;">
-                Reset Password
+                Create New Password
               </a>
             </p>
-            <p style="font-size:12px;color:#666;">This link expires in 1 hour.</p>
+            <p style="font-size:12px;color:#666;">This link expires in 1 hour. Older reset emails will not work after you request a new one.</p>
           </div>
         `,
       });

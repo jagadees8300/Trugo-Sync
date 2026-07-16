@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Patch,
   Post,
   Request,
@@ -81,6 +82,12 @@ export class AuthController {
   @ApiResponse({ status: 201, description: 'Reset email logic executed' })
   async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
     return this.authService.forgotPassword(forgotPasswordDto.email);
+  }
+
+  @Get('reset-password/:token')
+  @ApiOperation({ summary: 'Validate password reset token' })
+  async validateResetToken(@Param('token') token: string) {
+    return this.authService.validateResetToken(token);
   }
 
   @Post('reset-password')

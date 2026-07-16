@@ -3,8 +3,12 @@
   <head>
     <script>
       (function () {
-        var q = location.search;
-        if (q.indexOf('v=trugo') === -1) {
+        var path = location.pathname;
+        // Only cache-bust the splash/home route — never wipe /reset-password, /login, etc.
+        if (
+          (path === '/' || path === '/index.html') &&
+          location.search.indexOf('v=trugo') === -1
+        ) {
           location.replace('/?v=trugo-' + Date.now() + location.hash);
           return;
         }

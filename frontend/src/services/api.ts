@@ -39,7 +39,11 @@ export const authApi = {
     });
   },
   forgotPassword: (email: string) =>
-    api.post<{ message: string; emailSent?: boolean }>('/auth/forgot-password', { email }),
+    api.post<{ message: string; emailSent?: boolean }>('/auth/forgot-password', {
+      email,
+    }),
+  validateResetToken: (token: string) =>
+    api.get<{ valid: boolean; email?: string }>(`/auth/reset-password/${token}`),
   resetPassword: (token: string, newPassword: string) =>
     api.post('/auth/reset-password', { token, newPassword }),
 };

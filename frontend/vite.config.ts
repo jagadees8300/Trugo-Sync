@@ -38,8 +38,9 @@ function legacyCacheRecovery(): Plugin {
           res.statusCode = 200
           res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
           res.setHeader('Cache-Control', 'no-store')
+          // Never wipe SPA routes like /reset-password?token=...
           res.end(
-            `window.location.replace('/?v=trugo-' + Date.now());`,
+            `if (location.pathname === '/' || location.pathname === '/index.html') { location.replace('/?v=trugo-' + Date.now()); }`,
           )
           return
         }
