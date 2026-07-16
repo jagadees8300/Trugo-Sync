@@ -14,7 +14,7 @@ import { RolesGuard } from './roles.guard';
     MailModule,
     PassportModule,
     JwtModule.register({
-      secret: 'super-secret', // In production, use process.env.JWT_SECRET
+      secret: process.env.JWT_SECRET || 'super-secret',
       signOptions: { expiresIn: '60m' },
     }),
   ],

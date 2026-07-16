@@ -1,3 +1,8 @@
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+config({ path: resolve(process.cwd(), '.env') });
+
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
@@ -16,7 +21,9 @@ import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
-    MongooseModule.forRoot('mongodb://localhost:27017/trugo-sync'),
+    MongooseModule.forRoot(
+      process.env.MONGODB_URI || 'mongodb://localhost:27017/trugo-sync',
+    ),
     UsersModule,
     AuthModule,
     RolesModule,

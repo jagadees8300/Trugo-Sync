@@ -79,7 +79,7 @@ export const getCurrentUserId = (): string | null => {
   }
 };
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const DEFAULT_AVATAR = 'https://i.pravatar.cc/100?img=11';
 
 export const resolveAvatarUrl = (avatarUrl?: string | null) => {

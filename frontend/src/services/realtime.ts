@@ -1,5 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 
+const REALTIME_URL =
+  import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 let socket: Socket | null = null;
 
 export function connectRealtime(onNotification?: (payload: unknown) => void) {
@@ -15,7 +18,7 @@ export function connectRealtime(onNotification?: (payload: unknown) => void) {
   }
 
   socket?.disconnect();
-  socket = io('http://localhost:5000', {
+  socket = io(REALTIME_URL, {
     auth: { token },
     transports: ['websocket', 'polling'],
   });
