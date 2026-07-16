@@ -96,7 +96,7 @@ const MyLeavePage = () => {
     : null;
 
   const onDatePeople = useMemo(() => {
-    if (!selectedDate || !leaveDates.has(selectedDate)) return [];
+    if (!selectedDate || !leaveDates.has(selectedDate) || !userId) return [];
     const match = allLeaves.find((leave) => {
       if (leave.status !== 'Approved') return false;
       const from = new Date(leave.fromDate);

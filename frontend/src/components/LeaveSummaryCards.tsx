@@ -23,6 +23,13 @@ const LeaveSummaryCards = ({ stats, loading, variant = 'org' }: LeaveSummaryCard
   const pad = (n: number) => String(n).padStart(2, '0');
   const cards = variant === 'personal' ? personalCards : orgCards;
 
+  const getValue = (key: string) => {
+    if (variant === 'personal') {
+      return (stats as MyLeaveSummary)[key as keyof MyLeaveSummary] as number;
+    }
+    return (stats as LeaveDashboard)[key as keyof LeaveDashboard];
+  };
+
   return (
     <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
       {cards.map((card) => (
@@ -35,7 +42,7 @@ const LeaveSummaryCards = ({ stats, loading, variant = 'org' }: LeaveSummaryCard
             {card.label.toUpperCase()}
           </p>
           <h2 style={{ margin: 0 }}>
-            {loading ? '--' : pad((stats as Record<string, number>)[card.key] ?? 0)}
+            {loading ? '--' : pad(getValue(card.key) ?? 0)}
           </h2>
         </div>
       ))}

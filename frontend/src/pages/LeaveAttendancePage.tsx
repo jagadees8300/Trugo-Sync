@@ -18,16 +18,6 @@ const yesterdayYmd = () => {
   return toYmd(d);
 };
 
-/** Previous calendar week's Monday (or today if not Monday - last Monday). */
-const lastMondayYmd = () => {
-  const d = new Date();
-  const day = d.getDay(); // 0 Sun … 1 Mon
-  const daysSinceMonday = day === 0 ? 6 : day - 1;
-  const offset = daysSinceMonday === 0 ? 7 : daysSinceMonday;
-  d.setDate(d.getDate() - offset);
-  return toYmd(d);
-};
-
 const formatLabel = (ymd: string) =>
   new Date(ymd + 'T00:00:00').toLocaleDateString(undefined, {
     weekday: 'long',
@@ -106,7 +96,6 @@ const LeaveAttendancePage = () => {
 
   const today = toYmd(new Date());
   const yesterday = yesterdayYmd();
-  const lastMonday = lastMondayYmd();
 
   return (
     <>
