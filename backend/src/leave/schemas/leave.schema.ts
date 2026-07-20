@@ -42,6 +42,17 @@ export class Leave {
     default: 'Pending',
   })
   status: 'Pending' | 'Approved' | 'Rejected';
+
+  /** Admin/HR message shown to the employee when approving or rejecting. */
+  @Prop()
+  decisionReason?: string;
+
+  /** Who approved/rejected the request. */
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  decidedBy?: Types.ObjectId;
+
+  @Prop()
+  decidedAt?: Date;
 }
 
 export const LeaveSchema = SchemaFactory.createForClass(Leave);

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TasksService } from '../tasks/tasks.service';
 import { ProjectsService } from '../projects/projects.service';
+import type { AuthUser } from '../auth/auth-user';
 
 @Injectable()
 export class DashboardService {
@@ -25,8 +26,8 @@ export class DashboardService {
     return this.tasksService.getProjectDetail(projectId);
   }
 
-  getMyStats(userId: string) {
-    return this.tasksService.getMyStats(userId);
+  getMyStats(requester: AuthUser) {
+    return this.tasksService.getMyStats(requester);
   }
 
   async getUpcomingDeadlines() {

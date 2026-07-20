@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Eye, FileText, Plus, Upload } from 'lucide-react';
+import { ArrowLeft, Eye, FileText, Plus, Upload, Pencil, Trash2 } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 import KanbanBoard from '../components/KanbanBoard';
 import { projectsApi } from '../services/api';
-import { canManageMilestones, normalizeTaskStatus } from '../utils/task';
+import { canManageMilestones, isAdmin, normalizeTaskStatus } from '../utils/task';
 import type { Milestone, ProjectDetail, Task } from '../types';
 
 const statLinkStyle: CSSProperties = {
@@ -36,6 +36,8 @@ const ProjectProgressPage = () => {
   const [milestoneDue, setMilestoneDue] = useState('');
   const [milestoneAssigneeIds, setMilestoneAssigneeIds] = useState<string[]>([]);
   const canEditMilestones = canManageMilestones();
+  const admin = isAdmin();
+  const [deletingProject, setDeletingProject] = useState(false);
 
   const teamForMilestones = useMemo(() => {
     return (detail?.assignees ?? []).filter((a) => a.userId !== 'unassigned');
@@ -194,26 +196,94 @@ const ProjectProgressPage = () => {
     <>
       <BottomNav />
       <div className="app-container" style={{ padding: '24px 40px', position: 'relative' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-          <button
-            type="button"
-            onClick={() => navigate('/projects')}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              cursor: 'pointer',
-              color: 'var(--primary)',
-            }}
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <div>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Project Progress</p>
-            <h2 style={{ margin: 0, fontSize: 22 }}>
-              {loading ? 'Loading...' : detail?.project.name ?? 'Project'}
-            </h2>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            marginBottom: 24,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <button
+              type="button"
+              onClick={() => navigate('/projects')}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                color: 'var(--primary)',
+              }}
+            >
+              <ArrowLeft size={24} />
+            </button>
+            <div>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Project Progress</p>
+              <h2 style={{ margin: 0, fontSize: 22 }}>
+                {loading ? 'Loading...' : detail?.project.name ?? 'Project'}
+              </h2>
+            </div>
           </div>
+          {admin && projectId && detail && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className="btn"
+                style={{
+                  width: 'auto',
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  border: '1px solid #e5e7eb',
+                  background: '#fff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                onClick={() => navigate(`/create-project?id=${projectId}`)}
+              >
+                <Pencil size={14} />
+                Edit
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={deletingProject}
+                style={{
+                  width: 'auto',
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  border: '1px solid #fecaca',
+                  color: '#b91c1c',
+                  background: '#fef2f2',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                onClick={async () => {
+                  const name = detail.project.name;
+                  const ok = window.confirm(
+                    `Delete project "${name}"?\n\nThis will also delete its tasks, milestones, and documents.`,
+                  );
+                  if (!ok) return;
+                  setDeletingProject(true);
+                  try {
+                    await projectsApi.delete(projectId);
+                    navigate('/projects', { replace: true });
+                  } catch (err) {
+                    console.error(err);
+                    alert('Failed to delete project.');
+                    setDeletingProject(false);
+                  }
+                }}
+              >
+                <Trash2 size={14} />
+                {deletingProject ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          )}
         </div>
 
         {!loading && detail && (

@@ -6,7 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
+import { createReadStream, existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
 import { Model, Types } from 'mongoose';
 import { Project, ProjectDocument } from './schemas/project.schema';
@@ -18,9 +18,10 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { CreateStageDto } from './dto/create-stage.dto';
 import { CreateMilestoneDto } from './dto/create-milestone.dto';
 import { TasksService } from '../tasks/tasks.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { isDoneStatus, stageKeyFromName } from '../tasks/task-status.util';
 import type { AuthUser } from '../auth/auth-user';
-import { isAdmin, isElevated, canManageProject } from '../auth/auth-user';
+import { isAdmin, isElevated, canManageProject, isClient } from '../auth/auth-user';
 
 const STAGE_COLORS = ['#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
 
@@ -49,6 +50,7 @@ export class ProjectsService implements OnModuleInit {
     @InjectModel(Milestone.name) private milestoneModel: Model<MilestoneDocument>,
     @InjectModel(Task.name) private taskModel: Model<TaskDocument>,
     private tasksService: TasksService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async onModuleInit() {
@@ -100,18 +102,42 @@ export class ProjectsService implements OnModuleInit {
   private employeeProjectFilter(userId: string) {
     const oid = new Types.ObjectId(userId);
     return {
-      $or: [{ teamMembers: oid }, { createdBy: oid }],
+      $or: [{ teamMembers: oid }, { createdBy: oid }, { clientUserId: oid }],
     };
   }
 
+  private clientProjectFilter(userId: string) {
+    return { clientUserId: new Types.ObjectId(userId) };
+  }
+
+  private refId(value: unknown): string {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value !== null) {
+      const obj = value as { _id?: unknown; toString?: () => string };
+      if (obj._id != null) return String(obj._id);
+      if (typeof obj.toString === 'function') {
+        const s = obj.toString();
+        if (s && s !== '[object Object]') return s;
+      }
+    }
+    return String(value);
+  }
+
   private canAccessProject(project: ProjectDocument, userId: string): boolean {
-    const created = project.createdBy?.toString();
-    if (created === userId) return true;
-    return (project.teamMembers ?? []).some((m) => m.toString() === userId);
+    if (this.refId(project.createdBy) === userId) return true;
+    if (this.refId(project.clientUserId) === userId) return true;
+    return (project.teamMembers ?? []).some((m) => this.refId(m) === userId);
   }
 
   private assertProjectAccess(project: ProjectDocument, requester: AuthUser) {
     if (isElevated(requester)) return;
+    if (isClient(requester)) {
+      if (this.refId(project.clientUserId) !== requester.userId) {
+        throw new ForbiddenException('Access denied');
+      }
+      return;
+    }
     if (!this.canAccessProject(project, requester.userId)) {
       throw new ForbiddenException('Access denied');
     }
@@ -149,6 +175,14 @@ export class ProjectsService implements OnModuleInit {
     if (createProjectDto.deadline) {
       data.deadline = new Date(createProjectDto.deadline);
     }
+    if (
+      createProjectDto.clientUserId &&
+      Types.ObjectId.isValid(createProjectDto.clientUserId)
+    ) {
+      data.clientUserId = new Types.ObjectId(createProjectDto.clientUserId);
+    } else {
+      delete data.clientUserId;
+    }
     if (userId && Types.ObjectId.isValid(userId)) {
       data.createdBy = new Types.ObjectId(userId);
       const members = new Set(
@@ -163,13 +197,16 @@ export class ProjectsService implements OnModuleInit {
   }
 
   async findAll(requester?: AuthUser): Promise<Project[]> {
-    const query =
-      requester && !isElevated(requester)
-        ? this.employeeProjectFilter(requester.userId)
-        : {};
+    let query: Record<string, unknown> = {};
+    if (requester && isClient(requester)) {
+      query = this.clientProjectFilter(requester.userId);
+    } else if (requester && !isElevated(requester)) {
+      query = this.employeeProjectFilter(requester.userId);
+    }
     const projects = await this.projectModel
       .find(query)
       .populate('teamMembers', '-password')
+      .populate('clientUserId', 'name email role')
       .exec();
     return Promise.all(projects.map((p) => this.enrichProject(p)));
   }
@@ -178,20 +215,20 @@ export class ProjectsService implements OnModuleInit {
     const project = await this.projectModel
       .findById(id)
       .populate('teamMembers', '-password')
+      .populate('clientUserId', 'name email role')
       .exec();
     if (!project) throw new NotFoundException('Project not found');
     if (requester) this.assertProjectAccess(project, requester);
 
     const enriched = await this.enrichProject(project);
-    // After access check, return all project tasks (not only assignee-scoped).
-    const tasks = await this.tasksService.findAll({ project: id });
+    const tasks = await this.tasksService.findAll({ project: id }, requester);
     return { ...enriched, tasks };
   }
 
   async getDetail(projectId: string, requester: AuthUser) {
     await this.getAccessibleProject(projectId, requester);
     const detail = await this.tasksService.getProjectDetail(projectId);
-    const tasks = await this.tasksService.findAll({ project: projectId });
+    const tasks = await this.tasksService.findAll({ project: projectId }, requester);
     const milestones = await this.findMilestonesForRequester(projectId, requester);
     return { ...detail, tasks, milestones };
   }
@@ -261,6 +298,21 @@ export class ProjectsService implements OnModuleInit {
     if (updateProjectDto.deadline) {
       data.deadline = new Date(updateProjectDto.deadline);
     }
+    if (updateProjectDto.clientUserId !== undefined) {
+      if (
+        updateProjectDto.clientUserId &&
+        Types.ObjectId.isValid(updateProjectDto.clientUserId)
+      ) {
+        data.clientUserId = new Types.ObjectId(updateProjectDto.clientUserId);
+      } else {
+        data.clientUserId = null;
+      }
+    }
+    if (updateProjectDto.teamMembers !== undefined) {
+      data.teamMembers = (updateProjectDto.teamMembers ?? [])
+        .filter((id) => Types.ObjectId.isValid(id))
+        .map((id) => new Types.ObjectId(id));
+    }
     const updatedProject = await this.projectModel
       .findByIdAndUpdate(id, data, { new: true })
       .exec();
@@ -268,10 +320,25 @@ export class ProjectsService implements OnModuleInit {
     return this.enrichProject(updatedProject);
   }
 
-  async remove(id: string): Promise<Project> {
-    const deletedProject = await this.projectModel.findByIdAndDelete(id).exec();
-    if (!deletedProject) throw new NotFoundException('Project not found');
-    return deletedProject;
+  async remove(id: string): Promise<{ message: string; project: Project }> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException('Project not found');
+    }
+    const project = await this.projectModel.findById(id).exec();
+    if (!project) throw new NotFoundException('Project not found');
+
+    const oid = new Types.ObjectId(id);
+    await this.taskModel.deleteMany({ projectId: oid });
+    await this.milestoneModel.deleteMany({ projectId: oid });
+    await this.projectFileModel.deleteMany({ projectId: oid });
+
+    const uploadsDir = this.projectUploadsDir(id);
+    if (existsSync(uploadsDir)) {
+      rmSync(uploadsDir, { recursive: true, force: true });
+    }
+
+    await project.deleteOne();
+    return { message: 'Project deleted', project };
   }
 
   async uploadDocument(
@@ -279,7 +346,7 @@ export class ProjectsService implements OnModuleInit {
     file: Express.Multer.File | undefined,
     requester: AuthUser,
   ) {
-    await this.getAccessibleProject(projectId, requester);
+    const project = await this.getAccessibleProject(projectId, requester);
 
     if (!file) {
       throw new BadRequestException('File is required');
@@ -313,9 +380,35 @@ export class ProjectsService implements OnModuleInit {
       uploadedBy: new Types.ObjectId(requester.userId),
     });
 
+    if (isClient(requester)) {
+      const projectLabel = project.name || 'project';
+      const msg = `Client uploaded "${file.originalname}" on ${projectLabel}`;
+      try {
+        await this.notificationsService.notifyRoles(['ADMIN'], {
+          message: msg,
+          type: 'DOCUMENT_UPLOADED',
+          senderId: requester.userId,
+          excludeUserId: requester.userId,
+        });
+        const memberIds = (project.teamMembers ?? [])
+          .map((m) => this.refId(m))
+          .filter((id) => id && id !== requester.userId);
+        for (const memberId of memberIds) {
+          await this.notificationsService.create({
+            userId: memberId,
+            message: msg,
+            type: 'DOCUMENT_UPLOADED',
+            senderId: requester.userId,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to notify team about client document upload', err);
+      }
+    }
+
     return this.projectFileModel
       .findById(doc._id)
-      .populate('uploadedBy', 'name email')
+      .populate('uploadedBy', 'name email role')
       .lean()
       .exec();
   }
@@ -324,7 +417,7 @@ export class ProjectsService implements OnModuleInit {
     await this.getAccessibleProject(projectId, requester);
     return this.projectFileModel
       .find({ projectId: new Types.ObjectId(projectId) })
-      .populate('uploadedBy', 'name email')
+      .populate('uploadedBy', 'name email role')
       .sort({ createdAt: -1 })
       .lean()
       .exec();

@@ -1,17 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Search, Send, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Search, Send, AlertCircle, Pencil, Trash2 } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
-import { tasksApi } from '../services/api';
-import { isTaskOverdue, normalizeTaskStatus } from '../utils/task';
-import type { Task } from '../types';
+import { projectsApi, tasksApi, usersApi } from '../services/api';
+import { getEntityId } from '../utils/id';
+import { isAdmin, isTaskOverdue, normalizeTaskStatus, formatDateTime } from '../utils/task';
+import type { Project, Task, User } from '../types';
 
-const formatDate = (dateStr: string) => {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
-
-const formatDateTime = (dateStr: string) => {
+const formatRelativeDateTime = (dateStr: string) => {
   const d = new Date(dateStr);
   const now = new Date();
   const isToday = d.toDateString() === now.toDateString();
@@ -22,12 +18,20 @@ const formatDateTime = (dateStr: string) => {
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   if (isToday) return `Today, ${time}`;
   if (isYesterday) return `Yesterday, ${time}`;
-  return formatDate(dateStr);
+  return formatDateTime(dateStr);
+};
+
+const toDateInput = (value?: string) => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
 };
 
 const TaskDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const admin = isAdmin();
   const [task, setTask] = useState<Task | null>(null);
   const [subtasks, setSubtasks] = useState<Task[]>([]);
   const [comment, setComment] = useState('');
@@ -35,21 +39,32 @@ const TaskDetails = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    priority: 'MEDIUM',
+    deadline: '',
+    assignedTo: '',
+    projectId: '',
+  });
 
   const loadTask = async () => {
     if (!id) return;
     setLoading(true);
     setLoadError('');
     try {
-      const [res, subRes] = await Promise.all([
-        tasksApi.getById(id),
-        tasksApi.getSubtasks(id).catch(() => ({ data: [] as Task[] })),
-      ]);
+      const res = await tasksApi.getById(id);
       setTask(res.data);
-      setSubtasks(subRes.data);
+      setSubtasks(Array.isArray(res.data.subtasks) ? res.data.subtasks : []);
     } catch (err) {
       console.error('Failed to load task', err);
       setTask(null);
+      setSubtasks([]);
       const status = (err as { response?: { status?: number } })?.response?.status;
       const apiMessage = (err as { response?: { data?: { message?: string } } })
         ?.response?.data?.message;
@@ -59,10 +74,21 @@ const TaskDetails = () => {
             ? apiMessage
             : 'You do not have access to this task.',
         );
+      } else if (status === 401) {
+        setLoadError('Session expired. Please log in again.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        navigate('/login', { replace: true });
       } else if (status === 404) {
         setLoadError('Task not found.');
       } else {
-        setLoadError('Could not load this task. Check the API is running.');
+        setLoadError(
+          typeof apiMessage === 'string'
+            ? apiMessage
+            : status
+              ? `Could not load this task. API returned ${status}.`
+              : 'Could not load this task. Check the API is running.',
+        );
       }
     } finally {
       setLoading(false);
@@ -70,13 +96,84 @@ const TaskDetails = () => {
   };
 
   useEffect(() => {
-    loadTask();
+    void loadTask();
   }, [id]);
+
+  const startEditing = async () => {
+    if (!task || !admin) return;
+    setEditForm({
+      title: task.title || '',
+      description: task.description || '',
+      priority: task.priority || 'MEDIUM',
+      deadline: toDateInput(task.deadline),
+      assignedTo: getEntityId(task.assignedTo),
+      projectId:
+        typeof task.projectId === 'string'
+          ? task.projectId
+          : getEntityId(task.project),
+    });
+    setEditing(true);
+    try {
+      const [usersRes, projectsRes] = await Promise.all([
+        usersApi.getAssignees(),
+        projectsApi.getAll(),
+      ]);
+      setUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
+      setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : []);
+    } catch (err) {
+      console.error('Failed to load edit options', err);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!id || !admin) return;
+    if (!editForm.title.trim()) {
+      alert('Title is required.');
+      return;
+    }
+    if (!editForm.assignedTo || !editForm.projectId) {
+      alert('Assignee and project are required.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await tasksApi.update(id, {
+        title: editForm.title.trim(),
+        description: editForm.description,
+        priority: editForm.priority,
+        deadline: editForm.deadline || undefined,
+        assignedTo: editForm.assignedTo,
+        projectId: editForm.projectId,
+      });
+      setTask(res.data);
+      setEditing(false);
+    } catch (err) {
+      console.error('Failed to update task', err);
+      alert('Failed to update task.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!id || !admin || !task) return;
+    const ok = window.confirm(`Delete task "${task.title}"? This cannot be undone.`);
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await tasksApi.delete(id);
+      navigate('/tasks', { replace: true });
+    } catch (err) {
+      console.error('Failed to delete task', err);
+      alert('Failed to delete task.');
+      setDeleting(false);
+    }
+  };
 
   const handleStart = async () => {
     if (!id) return;
     try {
-      const res = await tasksApi.update(id, { status: 'IN_PROGRESS' });
+      const res = await tasksApi.updateStatus(id, 'IN_PROGRESS');
       setTask(res.data);
     } catch (err) {
       console.error('Failed to start task', err);
@@ -86,7 +183,7 @@ const TaskDetails = () => {
   const handleReopen = async () => {
     if (!id) return;
     try {
-      const res = await tasksApi.update(id, { status: 'TO_DO' });
+      const res = await tasksApi.updateStatus(id, 'TO_DO');
       setTask(res.data);
     } catch (err) {
       console.error('Failed to reopen task', err);
@@ -125,7 +222,20 @@ const TaskDetails = () => {
     return (
       <>
         <BottomNav />
-        <div className="app-container"><p className="text-muted text-center">Loading...</p></div>
+        <div className="app-container" style={{ padding: '24px 40px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+            <div style={{ cursor: 'pointer', color: 'var(--primary)' }} onClick={() => navigate(-1)}>
+              <ArrowLeft size={24} />
+            </div>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Task Details</h2>
+          </div>
+          <div className="task-details-skeleton">
+            <div className="skeleton-line skeleton-line--lg" />
+            <div className="skeleton-line skeleton-line--md" />
+            <div className="skeleton-line skeleton-line--sm" />
+            <div className="skeleton-card" />
+          </div>
+        </div>
       </>
     );
   }
@@ -178,7 +288,51 @@ const TaskDetails = () => {
             </div>
             <h2 style={{ margin: 0, fontSize: 18 }}>Task Details</h2>
           </div>
-          <Search size={22} color="#9ca3af" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {admin && !editing && (
+              <>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void startEditing()}
+                  style={{
+                    width: 'auto',
+                    padding: '8px 12px',
+                    fontSize: 13,
+                    border: '1px solid #e5e7eb',
+                    background: '#fff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Pencil size={14} />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void handleDelete()}
+                  disabled={deleting}
+                  style={{
+                    width: 'auto',
+                    padding: '8px 12px',
+                    fontSize: 13,
+                    border: '1px solid #fecaca',
+                    color: '#b91c1c',
+                    background: '#fef2f2',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Trash2 size={14} />
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </>
+            )}
+            <Search size={22} color="#9ca3af" />
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
@@ -197,12 +351,125 @@ const TaskDetails = () => {
                 {normalizedStatus.replace(/_/g, ' ')}
               </span>
               {overdue && (
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#dc2626' }}>OVERDUE</span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: '#1d4ed8',
+                    background: '#dbeafe',
+                    padding: '4px 10px',
+                    borderRadius: 4,
+                    letterSpacing: '0.3px',
+                  }}
+                >
+                  OVERDUE
+                </span>
               )}
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>ID: {taskId}</span>
             </div>
 
-            <h2 style={{ margin: '0 0 16px 0', fontSize: 24 }}>{task.title}</h2>
+            {editing ? (
+              <div className="card" style={{ padding: 16, marginBottom: 20 }}>
+                <h4 style={{ margin: '0 0 16px' }}>Edit Task</h4>
+                <div className="form-group">
+                  <label className="form-label">Title</label>
+                  <input
+                    className="form-input"
+                    value={editForm.title}
+                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea
+                    className="form-input"
+                    rows={4}
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    style={{ resize: 'vertical' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Assignee</label>
+                  <select
+                    className="form-input"
+                    value={editForm.assignedTo}
+                    onChange={(e) => setEditForm({ ...editForm, assignedTo: e.target.value })}
+                  >
+                    <option value="">Select assignee</option>
+                    {users.map((u) => (
+                      <option key={u._id} value={u._id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Project</label>
+                  <select
+                    className="form-input"
+                    value={editForm.projectId}
+                    onChange={(e) => setEditForm({ ...editForm, projectId: e.target.value })}
+                  >
+                    <option value="">Select project</option>
+                    {projects.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Priority</label>
+                  <select
+                    className="form-input"
+                    value={editForm.priority}
+                    onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
+                  >
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Deadline</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={editForm.deadline}
+                    onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ width: 'auto', padding: '10px 18px' }}
+                    disabled={saving}
+                    onClick={() => void handleSaveEdit()}
+                  >
+                    {saving ? 'Saving…' : 'Save Changes'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{
+                      width: 'auto',
+                      padding: '10px 18px',
+                      border: '1px solid #e5e7eb',
+                      background: '#fff',
+                    }}
+                    disabled={saving}
+                    onClick={() => setEditing(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <h2 style={{ margin: '0 0 16px 0', fontSize: 24 }}>{task.title}</h2>
+            )}
 
             {Array.isArray(task.dependsOn) && task.dependsOn.length > 0 && (
               <div className="card" style={{ padding: 12, marginBottom: 16 }}>
@@ -250,7 +517,7 @@ const TaskDetails = () => {
                   }}
                   onClick={() =>
                     navigate(
-                      `/create-task?project=${typeof task.projectId === 'string' ? task.projectId : (task.project as any)?._id || ''}&parentTaskId=${task._id}&assignedTo=${(task.assignedTo as any)?._id || ''}`,
+                      `/create-task?project=${typeof task.projectId === 'string' ? task.projectId : (task.project as { _id?: string })?._id || ''}&parentTaskId=${task._id}&assignedTo=${(task.assignedTo as { _id?: string })?._id || ''}`,
                     )
                   }
                 >
@@ -293,12 +560,12 @@ const TaskDetails = () => {
                   if (!subtaskTitle.trim() || !id) return;
                   const assigneeId =
                     typeof task.assignedTo === 'object' && task.assignedTo
-                      ? (task.assignedTo as any)._id
+                      ? (task.assignedTo as { _id?: string })._id
                       : '';
                   const projectId =
                     typeof task.projectId === 'string'
                       ? task.projectId
-                      : (task.project as any)?._id;
+                      : (task.project as { _id?: string })?._id;
                   if (!assigneeId || !projectId) {
                     alert('Parent task needs assignee and project to add a subtask.');
                     return;
@@ -369,13 +636,27 @@ const TaskDetails = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 32 }}>
               {[
                 { label: 'Project', value: task.project?.name || '—' },
-                { label: 'Assigned Date', value: formatDate(task.createdAt) },
+                {
+                  label: task.createdBy?.role === 'CLIENT' ? 'Client Assigned' : 'Assigned On',
+                  value: formatDateTime(task.createdAt),
+                },
                 {
                   label: 'Priority',
-                  value: task.priority === 'HIGH' ? 'High' : 'Low',
+                  value:
+                    task.priority === 'HIGH'
+                      ? 'High'
+                      : task.priority === 'MEDIUM'
+                        ? 'Medium'
+                        : 'Low',
                   icon: task.priority === 'HIGH',
                 },
                 { label: 'Assignee', value: task.assignedTo?.name || '—' },
+                ...(task.deadline
+                  ? [{ label: 'Deadline', value: formatDateTime(task.deadline) }]
+                  : []),
+                ...(task.createdBy?.role === 'CLIENT' && task.createdBy?.name
+                  ? [{ label: 'Assigned By', value: task.createdBy.name }]
+                  : []),
               ].map((item) => (
                 <div key={item.label} className="card" style={{ padding: 16, marginBottom: 0 }}>
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
@@ -389,14 +670,16 @@ const TaskDetails = () => {
               ))}
             </div>
 
-            <div style={{ marginBottom: 32 }}>
-              <h4 style={{ fontSize: 12, color: 'var(--text-muted)', letterSpacing: '1px', marginBottom: 12 }}>
-                TASK DESCRIPTION
-              </h4>
-              <p style={{ fontSize: 14, lineHeight: 1.7, color: '#374151' }}>
-                {task.description || 'No description provided.'}
-              </p>
-            </div>
+            {!editing && (
+              <div style={{ marginBottom: 32 }}>
+                <h4 style={{ fontSize: 12, color: 'var(--text-muted)', letterSpacing: '1px', marginBottom: 12 }}>
+                  TASK DESCRIPTION
+                </h4>
+                <p style={{ fontSize: 14, lineHeight: 1.7, color: '#374151' }}>
+                  {task.description || 'No description provided.'}
+                </p>
+              </div>
+            )}
 
             <div>
               <h4 style={{ fontSize: 12, color: 'var(--text-muted)', letterSpacing: '1px', marginBottom: 16 }}>
@@ -419,7 +702,7 @@ const TaskDetails = () => {
                     />
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{entry.action}</p>
                     <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-                      {formatDateTime(entry.changedAt)}
+                      {formatRelativeDateTime(entry.changedAt)}
                       {entry.changedBy && typeof entry.changedBy === 'object'
                         ? ` by ${(entry.changedBy as { name: string }).name}`
                         : ''}
@@ -452,7 +735,10 @@ const TaskDetails = () => {
                           {c.user?.name ?? c.author?.name ?? 'User'}
                         </span>
                         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          {new Date(c.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          {new Date(c.createdAt).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
                         </span>
                       </div>
                       <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>{c.text}</p>

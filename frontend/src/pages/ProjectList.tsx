@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Folder, Plus, ChevronRight, Users } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 import { projectsApi } from '../services/api';
+import { isAdmin } from '../utils/task';
 import type { Project } from '../types';
 
 const formatDate = (dateStr?: string) => {
@@ -16,23 +17,25 @@ const formatDate = (dateStr?: string) => {
 
 const ProjectList = () => {
   const navigate = useNavigate();
+  const admin = isAdmin();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const res = await projectsApi.getAll();
-        setProjects(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        console.error('Failed to load projects', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    void load();
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await projectsApi.getAll();
+      setProjects(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Failed to load projects', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return (
     <>
@@ -56,22 +59,24 @@ const ProjectList = () => {
               All your projects in one place
             </p>
           </div>
-          <Link
-            to="/create-project"
-            className="btn btn-primary"
-            style={{
-              width: 'auto',
-              padding: '10px 18px',
-              fontSize: 14,
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <Plus size={18} />
-            Create Project
-          </Link>
+          {admin && (
+            <Link
+              to="/create-project"
+              className="btn btn-primary"
+              style={{
+                width: 'auto',
+                padding: '10px 18px',
+                fontSize: 14,
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <Plus size={18} />
+              Create Project
+            </Link>
+          )}
         </div>
 
         {loading ? (
@@ -80,9 +85,15 @@ const ProjectList = () => {
           <div className="card" style={{ padding: 32, textAlign: 'center' }}>
             <Folder size={40} color="#d1d5db" style={{ marginBottom: 12 }} />
             <p style={{ margin: '0 0 16px', color: 'var(--text-muted)' }}>No projects yet.</p>
-            <Link to="/create-project" className="btn btn-primary" style={{ width: 'auto', textDecoration: 'none', padding: '10px 20px' }}>
-              Create your first project
-            </Link>
+            {admin && (
+              <Link
+                to="/create-project"
+                className="btn btn-primary"
+                style={{ width: 'auto', textDecoration: 'none', padding: '10px 20px' }}
+              >
+                Create your first project
+              </Link>
+            )}
           </div>
         ) : (
           <div

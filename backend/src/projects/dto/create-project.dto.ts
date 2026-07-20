@@ -22,6 +22,11 @@ export class CreateProjectDto {
   @IsOptional()
   clientName?: string;
 
+  @ApiPropertyOptional({ description: 'Client user id (role CLIENT)' })
+  @IsString()
+  @IsOptional()
+  clientUserId?: string;
+
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()

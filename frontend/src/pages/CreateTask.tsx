@@ -4,7 +4,7 @@ import { ArrowLeft, Search, Calendar, CheckSquare, ChevronDown } from 'lucide-re
 import BottomNav from '../components/BottomNav';
 import { tasksApi, usersApi, projectsApi } from '../services/api';
 import { getEntityId } from '../utils/id';
-import { isAdmin } from '../utils/task';
+import { getHomePathForRole, isClientRole } from '../utils/task';
 import type { User, Project } from '../types';
 
 const selectStyle: React.CSSProperties = {
@@ -26,6 +26,7 @@ const selectStyle: React.CSSProperties = {
 const CreateTask = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const clientMode = isClientRole();
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
@@ -36,7 +37,7 @@ const CreateTask = () => {
     description: '',
     assignedTo: '',
     project: '',
-    priority: 'HIGH',
+    priority: clientMode ? 'HIGH' : 'MEDIUM',
     deadline: '',
     parentTaskId: '',
     dependsOn: '',
@@ -54,7 +55,7 @@ const CreateTask = () => {
       }
 
       const [usersRes, projectsRes] = await Promise.all([
-        isAdmin() ? usersApi.getAll() : usersApi.getAssignees(),
+        usersApi.getAssignees(),
         projectsApi.getAll(),
       ]);
 
@@ -71,8 +72,9 @@ const CreateTask = () => {
       setFormData((prev) => ({
         ...prev,
         assignedTo: preselectedAssignee,
-        project: preselectedProject,
+        project: preselectedProject || (clientMode && projectList[0] ? projectList[0]._id : ''),
         parentTaskId: preselectedParent,
+        priority: clientMode ? 'HIGH' : prev.priority,
       }));
     } catch (err) {
       console.error('Failed to load form data', err);
@@ -80,7 +82,7 @@ const CreateTask = () => {
     } finally {
       setLoadingOptions(false);
     }
-  }, [searchParams]);
+  }, [searchParams, clientMode]);
 
   useEffect(() => {
     loadOptions();
@@ -105,7 +107,7 @@ const CreateTask = () => {
         description: formData.description,
         assignedTo: formData.assignedTo,
         projectId: formData.project,
-        priority: formData.priority,
+        priority: clientMode ? 'HIGH' : formData.priority,
         deadline: formData.deadline || undefined,
         parentTaskId: formData.parentTaskId || undefined,
         dependsOn: formData.dependsOn
@@ -113,17 +115,29 @@ const CreateTask = () => {
           : undefined,
         milestoneId: formData.milestoneId || undefined,
       });
-      navigate(`/tasks/user/${formData.assignedTo}`);
+      if (clientMode) {
+        navigate(getHomePathForRole());
+      } else {
+        navigate(`/tasks/user/${formData.assignedTo}`);
+      }
     } catch (error) {
       console.error('Failed to create task', error);
-      alert('Failed to create task. Check assignee and project are selected.');
+      alert(
+        clientMode
+          ? 'Failed to assign task. Check assignee and project are selected.'
+          : 'Failed to create task. Check assignee and project are selected.',
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
   const assigneePlaceholder = loadingOptions ? 'Loading assignees...' : 'Select assignee';
-  const projectPlaceholder = loadingOptions ? 'Loading projects...' : 'Select project';
+  const projectPlaceholder = loadingOptions
+    ? 'Loading projects...'
+    : clientMode
+      ? 'Select your project'
+      : 'Select project';
 
   return (
     <>
@@ -132,7 +146,14 @@ const CreateTask = () => {
         <div className="create-task-header">
           <button type="button" className="create-task-back" onClick={() => navigate(-1)}>
             <ArrowLeft size={24} />
-            <h2>Create Task</h2>
+            <div>
+              <h2 style={{ margin: 0 }}>{clientMode ? 'Assign Task' : 'Create Task'}</h2>
+              {clientMode && (
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)', fontWeight: 400 }}>
+                  Assign work to the team on your projects only
+                </p>
+              )}
+            </div>
           </button>
           <Search size={22} color="#9ca3af" />
         </div>
@@ -149,13 +170,13 @@ const CreateTask = () => {
 
           <form className="create-task-form" onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label">Task Name</label>
+              <label className="form-label">{clientMode ? 'What needs to be done?' : 'Task Name'}</label>
               <input
                 type="text"
                 className="form-input create-task-input"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Enter task name..."
+                placeholder={clientMode ? 'Describe the issue or request...' : 'Enter task name...'}
                 required
               />
             </div>
@@ -166,12 +187,16 @@ const CreateTask = () => {
                 className="form-input create-task-input create-task-textarea"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Add detailed notes about this task..."
+                placeholder={
+                  clientMode
+                    ? 'Add details, steps to reproduce, or notes for the team...'
+                    : 'Add detailed notes about this task...'
+                }
               />
             </div>
 
             <div className="form-group" style={{ position: 'relative' }}>
-              <label className="form-label">Assigned To</label>
+              <label className="form-label">{clientMode ? 'Assign To Employee' : 'Assigned To'}</label>
               <select
                 className="form-input form-select-dark"
                 style={selectStyle}
@@ -197,7 +222,7 @@ const CreateTask = () => {
             </div>
 
             <div className="form-group" style={{ position: 'relative' }}>
-              <label className="form-label">Project</label>
+              <label className="form-label">{clientMode ? 'Your Project' : 'Project'}</label>
               <select
                 className="form-input form-select-dark"
                 style={selectStyle}
@@ -224,45 +249,61 @@ const CreateTask = () => {
 
             <div className="form-group">
               <label className="form-label">Priority</label>
-              <div className="create-task-priority">
-                {(
-                  [
-                    { key: 'HIGH', label: 'High', selected: { bg: '#fee2e2', border: '#ef4444', color: '#b91c1c' } },
-                    { key: 'MEDIUM', label: 'Medium', selected: { bg: '#fef3c7', border: '#f59e0b', color: '#b45309' } },
-                    { key: 'LOW', label: 'Low', selected: { bg: '#d1fae5', border: '#10b981', color: '#065f46' } },
-                  ] as const
-                ).map((p) => {
-                  const active = formData.priority === p.key;
-                  return (
-                    <button
-                      key={p.key}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, priority: p.key })}
-                      style={{
-                        flex: 1,
-                        padding: '14px',
-                        borderRadius: 24,
-                        border: active ? `1px solid ${p.selected.border}` : '1px solid #e5e7eb',
-                        backgroundColor: active ? p.selected.bg : '#f9fafb',
-                        color: active ? p.selected.color : '#6b7280',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {p.key === 'HIGH' && <span style={{ fontWeight: 'bold' }}>! </span>}
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
+              {clientMode ? (
+                <div
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: 12,
+                    border: '1px solid #ef4444',
+                    backgroundColor: '#fee2e2',
+                    color: '#b91c1c',
+                    fontWeight: 600,
+                    fontSize: 14,
+                  }}
+                >
+                  ! High — client assignments are always high priority
+                </div>
+              ) : (
+                <div className="create-task-priority">
+                  {(
+                    [
+                      { key: 'HIGH', label: 'High', selected: { bg: '#fee2e2', border: '#ef4444', color: '#b91c1c' } },
+                      { key: 'MEDIUM', label: 'Medium', selected: { bg: '#fef3c7', border: '#f59e0b', color: '#b45309' } },
+                      { key: 'LOW', label: 'Low', selected: { bg: '#d1fae5', border: '#10b981', color: '#065f46' } },
+                    ] as const
+                  ).map((p) => {
+                    const active = formData.priority === p.key;
+                    return (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, priority: p.key })}
+                        style={{
+                          flex: 1,
+                          padding: '14px',
+                          borderRadius: 24,
+                          border: active ? `1px solid ${p.selected.border}` : '1px solid #e5e7eb',
+                          backgroundColor: active ? p.selected.bg : '#f9fafb',
+                          color: active ? p.selected.color : '#6b7280',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {p.key === 'HIGH' && <span style={{ fontWeight: 'bold' }}>! </span>}
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="form-group">
-              <label className="form-label">Deadline</label>
+              <label className="form-label">{clientMode ? 'Deadline (date & time)' : 'Deadline'}</label>
               <div className="create-task-deadline">
                 <Calendar size={20} color="#4b5563" />
                 <input
-                  type="date"
+                  type={clientMode ? 'datetime-local' : 'date'}
                   className="form-input create-task-input"
                   value={formData.deadline}
                   onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
@@ -275,7 +316,14 @@ const CreateTask = () => {
               disabled={submitting || loadingOptions || !!loadError}
               className="btn btn-primary create-task-submit"
             >
-              {submitting ? 'Creating...' : 'Create Task'} <CheckSquare size={20} />
+              {submitting
+                ? clientMode
+                  ? 'Assigning...'
+                  : 'Creating...'
+                : clientMode
+                  ? 'Assign Task'
+                  : 'Create Task'}{' '}
+              <CheckSquare size={20} />
             </button>
           </form>
         </div>

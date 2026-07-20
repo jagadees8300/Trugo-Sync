@@ -8,7 +8,14 @@ export class RolesService implements OnModuleInit {
   constructor(@InjectModel(Role.name) private roleModel: Model<Role>) {}
 
   async onModuleInit() {
-    for (const name of ['ADMIN', 'HR', 'PROJECT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE']) {
+    for (const name of [
+      'ADMIN',
+      'HR',
+      'PROJECT_MANAGER',
+      'TEAM_LEAD',
+      'EMPLOYEE',
+      'CLIENT',
+    ]) {
       const exists = await this.roleModel.findOne({ name });
       if (!exists) {
         await this.roleModel.create({ name });

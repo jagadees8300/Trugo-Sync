@@ -36,6 +36,7 @@ export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Post()
+  @Roles('ADMIN', 'PROJECT_MANAGER')
   @ApiOperation({ summary: 'Create project' })
   create(
     @Body() createProjectDto: CreateProjectDto,
@@ -160,15 +161,15 @@ export class ProjectsController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'PROJECT_MANAGER')
-  @ApiOperation({ summary: 'Update project' })
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Update project (admin only)' })
   update(@Param('id') id: string, @Body() updateProjectDto: UpdateProjectDto) {
     return this.projectsService.update(id, updateProjectDto);
   }
 
   @Delete(':id')
-  @Roles('ADMIN', 'PROJECT_MANAGER')
-  @ApiOperation({ summary: 'Delete project' })
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Delete project (admin only)' })
   remove(@Param('id') id: string) {
     return this.projectsService.remove(id);
   }

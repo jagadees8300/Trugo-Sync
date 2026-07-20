@@ -26,6 +26,10 @@ export class Project {
   @Prop()
   clientName?: string;
 
+  /** Linked client login — only this client sees the project in their portal. */
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  clientUserId?: Types.ObjectId;
+
   @Prop()
   description?: string;
 

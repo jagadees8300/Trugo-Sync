@@ -179,6 +179,8 @@ export class LeaveService implements OnModuleInit {
       isHalfDay: !!doc.isHalfDay,
       halfDaySession: doc.halfDaySession,
       status: doc.status,
+      decisionReason: doc.decisionReason,
+      decidedAt: doc.decidedAt,
       createdAt: doc.createdAt,
     };
   }
@@ -362,7 +364,7 @@ export class LeaveService implements OnModuleInit {
     return leaves.map((l) => this.formatLeave(l));
   }
 
-  async approve(id: string) {
+  async approve(id: string, reason?: string, decidedBy?: AuthUser) {
     const leave = await this.leaveModel.findById(id);
     if (!leave) throw new NotFoundException('Leave request not found');
     if (leave.status === 'Approved') {
@@ -388,11 +390,18 @@ export class LeaveService implements OnModuleInit {
     }
 
     leave.status = 'Approved';
+    leave.decisionReason = reason?.trim() || undefined;
+    if (decidedBy && Types.ObjectId.isValid(decidedBy.userId)) {
+      leave.decidedBy = new Types.ObjectId(decidedBy.userId);
+    }
+    leave.decidedAt = new Date();
     await leave.save();
+
+    await this.notifyDecision(leave, 'Approved', reason, decidedBy);
     return { message: 'Leave Approved Successfully' };
   }
 
-  async reject(id: string) {
+  async reject(id: string, reason?: string, decidedBy?: AuthUser) {
     const leave = await this.leaveModel.findById(id);
     if (!leave) throw new NotFoundException('Leave request not found');
 
@@ -409,8 +418,40 @@ export class LeaveService implements OnModuleInit {
     }
 
     leave.status = 'Rejected';
+    leave.decisionReason = reason?.trim() || undefined;
+    if (decidedBy && Types.ObjectId.isValid(decidedBy.userId)) {
+      leave.decidedBy = new Types.ObjectId(decidedBy.userId);
+    }
+    leave.decidedAt = new Date();
     await leave.save();
+
+    await this.notifyDecision(leave, 'Rejected', reason, decidedBy);
     return { message: 'Leave Rejected Successfully' };
+  }
+
+  private async notifyDecision(
+    leave: LeaveDocument,
+    decision: 'Approved' | 'Rejected',
+    reason?: string,
+    decidedBy?: AuthUser,
+  ) {
+    try {
+      const fromLabel = new Date(leave.fromDate).toISOString().slice(0, 10);
+      const toLabel = new Date(leave.toDate).toISOString().slice(0, 10);
+      const range = fromLabel === toLabel ? fromLabel : `${fromLabel} → ${toLabel}`;
+      const trimmedReason = reason?.trim();
+      const base = `Your ${leave.leaveType.toLowerCase()} leave (${range}) was ${decision.toLowerCase()}`;
+      const message = trimmedReason ? `${base} — ${trimmedReason}` : `${base}.`;
+      await this.notificationsService.create({
+        userId: leave.employeeId.toString(),
+        message,
+        type: decision === 'Approved' ? 'LEAVE_APPROVED' : 'LEAVE_REJECTED',
+        senderId: decidedBy?.userId,
+        targetUserId: leave.employeeId.toString(),
+      });
+    } catch (err) {
+      console.error('Failed to notify employee about leave decision', err);
+    }
   }
 
   async listHolidays(year?: number) {

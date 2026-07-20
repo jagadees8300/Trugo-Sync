@@ -17,8 +17,42 @@ export const isTaskDone = (status: string) =>
 export const isTaskOverdue = (task: Pick<Task, 'deadline' | 'status'>) => {
   if (!task.deadline || isTaskDone(task.status)) return false;
   const deadline = new Date(task.deadline);
-  deadline.setHours(23, 59, 59, 999);
+  // If deadline includes a specific time, use it; otherwise end of that day.
+  const hasTime =
+    deadline.getHours() !== 0 ||
+    deadline.getMinutes() !== 0 ||
+    deadline.getSeconds() !== 0;
+  if (!hasTime) {
+    deadline.setHours(23, 59, 59, 999);
+  }
   return deadline < new Date();
+};
+
+/** Client-assigned tasks only (admin/employee HIGH stays normal white). */
+export const isClientAssignedTask = (
+  task: Pick<Task, 'fromClient' | 'createdBy'>,
+) => task.fromClient === true || task.createdBy?.role === 'CLIENT';
+
+/** Red card style: client-created + HIGH priority. */
+export const isClientHighPriorityTask = (
+  task: Pick<Task, 'fromClient' | 'createdBy' | 'priority'>,
+) => isClientAssignedTask(task) && task.priority === 'HIGH';
+
+/** Full date + time for client assignment timing, e.g. "Jul 17, 2026, 1:28 PM" */
+export const formatDateTime = (dateStr?: string) => {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '—';
+  const date = d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const time = d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${date}, ${time}`;
 };
 
 export const getUserRole = (): string => {
@@ -61,8 +95,13 @@ export const canManageMilestones = (role?: string) => {
   return r === 'ADMIN' || r === 'PROJECT_MANAGER' || r === 'TEAM_LEAD';
 };
 
-export const getHomePathForRole = (role?: string) =>
-  usesAdminHome(role) ? '/dashboard' : '/my-home';
+export const getHomePathForRole = (role?: string) => {
+  if ((role ?? getUserRole()) === 'CLIENT') return '/client-home';
+  return usesAdminHome(role) ? '/dashboard' : '/my-home';
+};
+
+export const isClientRole = (role?: string) =>
+  (role ?? getUserRole()) === 'CLIENT';
 
 export const getLeavePathForRole = (role?: string) => {
   const r = role ?? getUserRole();
@@ -79,7 +118,12 @@ export const getCurrentUserId = (): string | null => {
   }
 };
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE =
+  import.meta.env.VITE_API_URL !== undefined
+    ? import.meta.env.VITE_API_URL
+    : import.meta.env.PROD
+      ? ''
+      : 'http://localhost:5000';
 const DEFAULT_AVATAR = 'https://i.pravatar.cc/100?img=11';
 
 export const resolveAvatarUrl = (avatarUrl?: string | null) => {

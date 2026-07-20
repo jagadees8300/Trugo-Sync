@@ -9,7 +9,7 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { isDoneStatus, normalizeStatus, toApiStatus } from './task-status.util';
 import type { AuthUser } from '../auth/auth-user';
-import { isElevated } from '../auth/auth-user';
+import { isElevated, isClient } from '../auth/auth-user';
 
 type Requester = Pick<AuthUser, 'userId' | 'role'>;
 
@@ -77,14 +77,24 @@ export class TasksService implements OnModuleInit {
     return assigned === userId || created === userId;
   }
 
+  private async isProjectClient(projectId: unknown, userId: string) {
+    if (!this.isValidObjectId(projectId)) return false;
+    const project = await this.projectModel
+      .findById(projectId)
+      .select('clientUserId')
+      .lean();
+    return project?.clientUserId?.toString() === userId;
+  }
+
   private async isProjectTeamMember(projectId: unknown, userId: string) {
     if (!this.isValidObjectId(projectId)) return false;
     const project = await this.projectModel
       .findById(projectId)
-      .select('teamMembers createdBy')
+      .select('teamMembers createdBy clientUserId')
       .lean();
     if (!project) return false;
     if (project.createdBy?.toString() === userId) return true;
+    if (project.clientUserId?.toString() === userId) return true;
     return (project.teamMembers ?? []).some((m) => m.toString() === userId);
   }
 
@@ -95,7 +105,18 @@ export class TasksService implements OnModuleInit {
     const projectId =
       projectRef?._id?.toString?.() ?? projectRef?.toString?.() ?? projectRef;
     if (await this.isProjectTeamMember(projectId, requester.userId)) return;
+    if (isClient(requester) && (await this.isProjectClient(projectId, requester.userId))) {
+      return;
+    }
     throw new ForbiddenException('Access denied');
+  }
+
+  private async clientProjectIds(userId: string): Promise<Types.ObjectId[]> {
+    const projects = await this.projectModel
+      .find({ clientUserId: new Types.ObjectId(userId) })
+      .select('_id')
+      .lean();
+    return projects.map((p) => p._id as Types.ObjectId);
   }
 
   /** Ensure task assignees become project team members (milestone access, roster). */
@@ -173,12 +194,18 @@ export class TasksService implements OnModuleInit {
   private serializeTask(task: Task): Record<string, unknown> {
     const obj = typeof (task as any).toObject === 'function' ? (task as any).toObject() : { ...task };
     const projectRef = obj.projectId ?? obj.project;
+    const createdByRole =
+      obj.createdBy && typeof obj.createdBy === 'object'
+        ? (obj.createdBy as { role?: string }).role
+        : undefined;
     return {
       ...obj,
       status: toApiStatus(obj.status),
       projectId:
         projectRef?._id?.toString?.() ?? projectRef?.toString?.() ?? projectRef,
       project: projectRef,
+      /** True only when a CLIENT user created/assigned this task (not admin/employee HIGH). */
+      fromClient: createdByRole === 'CLIENT',
     };
   }
 
@@ -186,32 +213,39 @@ export class TasksService implements OnModuleInit {
     return Types.ObjectId.isValid(String(value)) && String(value).length === 24;
   }
 
-  private async populateTask(task: TaskDocument): Promise<Task> {
+  private async populateTask(task: TaskDocument, lite = false): Promise<Task> {
     const projectRef = task.projectId ?? (task as any).project;
+    const paths: Array<string | { path: string; select?: string; model?: string }> = [];
+
     if (this.isValidObjectId(projectRef)) {
-      await task.populate({ path: 'projectId', model: 'Project' });
+      paths.push({ path: 'projectId', model: 'Project' });
     }
     if (this.isValidObjectId(task.assignedTo)) {
-      await task.populate({ path: 'assignedTo', select: '-password' });
+      paths.push({ path: 'assignedTo', select: 'name email role designation avatarUrl' });
     }
     if (this.isValidObjectId(task.createdBy)) {
-      await task.populate({ path: 'createdBy', select: '-password' });
+      paths.push({
+        path: 'createdBy',
+        select: lite ? 'name role' : 'name email role designation avatarUrl',
+      });
     }
-    if (this.isValidObjectId(task.createdBy)) {
-      await task.populate({ path: 'createdBy', select: '-password' });
+    if (!lite && task.comments?.length) {
+      paths.push({ path: 'comments.user', select: 'name email avatarUrl' });
     }
-    if (task.comments?.length) {
-      await task.populate({ path: 'comments.user', select: '-password' });
+    if (!lite && task.history?.length) {
+      paths.push({ path: 'history.changedBy', select: 'name email avatarUrl' });
     }
-    if (task.history?.length) {
-      await task.populate({ path: 'history.changedBy', select: '-password' });
+    if (!lite && this.isValidObjectId(task.parentTaskId)) {
+      paths.push({ path: 'parentTaskId', select: 'title status' });
     }
-    if (this.isValidObjectId(task.parentTaskId)) {
-      await task.populate({ path: 'parentTaskId', select: 'title status' });
+    if (!lite && task.dependsOn?.length) {
+      paths.push({ path: 'dependsOn', select: 'title status' });
     }
-    if (task.dependsOn?.length) {
-      await task.populate({ path: 'dependsOn', select: 'title status' });
+
+    if (paths.length > 0) {
+      await task.populate(paths);
     }
+
     return this.serializeTask(task) as unknown as Task;
   }
 
@@ -270,8 +304,23 @@ export class TasksService implements OnModuleInit {
     }
   }
 
-  async create(createTaskDto: CreateTaskDto, userId?: string): Promise<Task> {
+  async create(createTaskDto: CreateTaskDto, userId?: string, requester?: Requester): Promise<Task> {
     const projectId = createTaskDto.projectId || createTaskDto.project;
+
+    if (requester && isClient(requester)) {
+      if (!projectId || !this.isValidObjectId(projectId)) {
+        throw new BadRequestException('Clients must assign tasks to one of their projects');
+      }
+      const allowed = await this.isProjectClient(projectId, requester.userId);
+      if (!allowed) {
+        throw new ForbiddenException('You can only create tasks on your assigned projects');
+      }
+      if (!createTaskDto.assignedTo) {
+        throw new BadRequestException('Please assign the task to an employee');
+      }
+      createTaskDto.priority = 'HIGH';
+    }
+
     const taskData: Record<string, unknown> = {
       title: createTaskDto.title,
       description: createTaskDto.description,
@@ -319,16 +368,21 @@ export class TasksService implements OnModuleInit {
 
     if (createTaskDto.assignedTo && this.isValidObjectId(createTaskDto.assignedTo)) {
       const assigneeId = createTaskDto.assignedTo;
+      const fromClient = requester && isClient(requester);
       await this.notificationsService.create({
         userId: assigneeId,
-        message: `New task assigned: ${createTaskDto.title}`,
+        message: fromClient
+          ? `Client assigned a task: ${createTaskDto.title}`
+          : `New task assigned: ${createTaskDto.title}`,
         type: 'TASK_ASSIGNED',
         senderId: userId,
         targetUserId: assigneeId,
       });
       try {
         await this.notificationsService.notifyRoles(['ADMIN'], {
-          message: `Task "${createTaskDto.title}"`,
+          message: fromClient
+            ? `Client assigned task "${createTaskDto.title}"`
+            : `Task "${createTaskDto.title}"`,
           type: 'TASK_ASSIGNED',
           senderId: userId,
           targetUserId: assigneeId,
@@ -360,7 +414,16 @@ export class TasksService implements OnModuleInit {
   ): Promise<Task[]> {
     const query: Record<string, unknown> = {};
 
-    if (requester && !isElevated(requester)) {
+    if (requester && isClient(requester)) {
+      const projectIds = await this.clientProjectIds(requester.userId);
+      if (projectIds.length === 0) return [];
+      query.projectId = { $in: projectIds };
+      if (filters?.project && this.isValidObjectId(filters.project)) {
+        const allowed = projectIds.some((id) => id.toString() === filters.project);
+        if (!allowed) throw new ForbiddenException('Access denied');
+        query.projectId = new Types.ObjectId(filters.project);
+      }
+    } else if (requester && !isElevated(requester)) {
       Object.assign(query, this.employeeTaskFilter(requester.userId));
       if (filters?.assignedTo && filters.assignedTo !== requester.userId) {
         throw new ForbiddenException('Access denied');
@@ -382,7 +445,11 @@ export class TasksService implements OnModuleInit {
       }
       query.assignedTo = new Types.ObjectId(filters.assignedTo);
     }
-    if (filters?.project && this.isValidObjectId(filters.project)) {
+    if (
+      filters?.project &&
+      this.isValidObjectId(filters.project) &&
+      !(requester && isClient(requester))
+    ) {
       query.projectId = new Types.ObjectId(filters.project);
     }
     if (filters?.search) {
@@ -393,16 +460,22 @@ export class TasksService implements OnModuleInit {
     }
 
     const tasks = await this.taskModel.find(query).sort({ createdAt: -1 }).exec();
-    return Promise.all(tasks.map((task) => this.populateTask(task)));
+    return Promise.all(tasks.map((task) => this.populateTask(task, true)));
   }
 
-  async findOne(id: string, requester?: Requester): Promise<Task> {
+  async findOne(id: string, requester?: Requester): Promise<Task & { subtasks?: Task[] }> {
     const task = await this.taskModel.findById(id).exec();
     if (!task) throw new NotFoundException('Task not found');
     if (requester) {
       await this.assertTaskAccess(task, requester);
     }
-    return this.populateTask(task);
+    const populated = await this.populateTask(task);
+    const subtasks = await this.taskModel
+      .find({ parentTaskId: new Types.ObjectId(id) })
+      .select('title status _id createdAt priority')
+      .sort({ createdAt: 1 })
+      .lean();
+    return { ...populated, subtasks: subtasks as unknown as Task[] };
   }
 
   async update(
@@ -557,16 +630,18 @@ export class TasksService implements OnModuleInit {
     if (!this.isValidObjectId(parentTaskId)) {
       throw new NotFoundException('Task not found');
     }
-    const parent = await this.taskModel.findById(parentTaskId).exec();
+    const parent = await this.taskModel.findById(parentTaskId).select('_id assignedTo createdBy projectId').exec();
     if (!parent) throw new NotFoundException('Task not found');
     if (requester) {
-      await this.assertTaskAccess(parent, requester);
+      await this.assertTaskAccess(parent as TaskDocument, requester);
     }
     const tasks = await this.taskModel
       .find({ parentTaskId: new Types.ObjectId(parentTaskId) })
+      .select('title status _id createdAt priority assignedTo')
       .sort({ createdAt: 1 })
-      .exec();
-    return Promise.all(tasks.map((t) => this.populateTask(t)));
+      .populate({ path: 'assignedTo', select: 'name' })
+      .lean();
+    return tasks;
   }
 
   async addComment(
@@ -606,28 +681,62 @@ export class TasksService implements OnModuleInit {
   async remove(id: string): Promise<Task> {
     const deletedTask = await this.taskModel.findByIdAndDelete(id).exec();
     if (!deletedTask) throw new NotFoundException('Task not found');
+    const projectRef = deletedTask.projectId ?? (deletedTask as any).project;
+    const projectId =
+      projectRef?._id?.toString?.() ?? projectRef?.toString?.() ?? projectRef;
+    if (projectId) {
+      await this.syncProjectStats(String(projectId));
+    }
     return deletedTask;
   }
 
-  async getMyStats(userId: string) {
-    const scope = this.employeeTaskFilter(userId);
-    const [total, completed, pending, inProgress] = await Promise.all([
+  async getMyStats(requester: Requester) {
+    let scope: Record<string, unknown>;
+    if (isClient(requester)) {
+      const projectIds = await this.clientProjectIds(requester.userId);
+      if (projectIds.length === 0) {
+        return { total: 0, completed: 0, pending: 0, inProgress: 0, highPriority: 0 };
+      }
+      scope = { projectId: { $in: projectIds } };
+    } else {
+      scope = this.employeeTaskFilter(requester.userId);
+    }
+    const openHighFilter = {
+      $and: [
+        scope,
+        { priority: 'HIGH' as const },
+        { status: { $nin: ['DONE', 'COMPLETED'] } },
+      ],
+    };
+    const [total, completed, pending, inProgress, highPriority] = await Promise.all([
       this.taskModel.countDocuments(scope),
-      this.taskModel.countDocuments({ ...scope, status: 'DONE' }),
-      this.taskModel.countDocuments({ ...scope, status: 'TO_DO' }),
+      this.taskModel.countDocuments({
+        ...scope,
+        status: { $in: ['DONE', 'COMPLETED'] },
+      }),
+      this.taskModel.countDocuments({
+        ...scope,
+        status: { $in: ['TO_DO', 'PENDING'] },
+      }),
       this.taskModel.countDocuments({ ...scope, status: 'IN_PROGRESS' }),
+      this.taskModel.countDocuments(openHighFilter as any),
     ]);
-    return { total, completed, pending, inProgress };
+    return { total, completed, pending, inProgress, highPriority };
   }
 
   async getStats() {
-    const [total, completed, pending, inProgress] = await Promise.all([
+    const openHighFilter = {
+      priority: 'HIGH' as const,
+      status: { $nin: ['DONE', 'COMPLETED'] },
+    };
+    const [total, completed, pending, inProgress, highPriority] = await Promise.all([
       this.taskModel.countDocuments(),
-      this.taskModel.countDocuments({ status: 'DONE' }),
-      this.taskModel.countDocuments({ status: 'TO_DO' }),
+      this.taskModel.countDocuments({ status: { $in: ['DONE', 'COMPLETED'] } }),
+      this.taskModel.countDocuments({ status: { $in: ['TO_DO', 'PENDING'] } }),
       this.taskModel.countDocuments({ status: 'IN_PROGRESS' }),
+      this.taskModel.countDocuments(openHighFilter as any),
     ]);
-    return { total, completed, pending, inProgress };
+    return { total, completed, pending, inProgress, highPriority };
   }
 
   async getTeamStatus() {

@@ -166,4 +166,30 @@ export class NotificationsService {
     notification.readStatus = true;
     return notification.save();
   }
+
+  /** Owner can delete their own notification (admin and employee use the same rule). */
+  async remove(id: string, requester: AuthUser) {
+    const notification = await this.notificationModel.findById(id).exec();
+    if (!notification) throw new NotFoundException('Notification not found');
+    if (notification.userId.toString() !== requester.userId) {
+      throw new ForbiddenException('Access denied');
+    }
+    await notification.deleteOne();
+    return { message: 'Notification deleted', id };
+  }
+
+  async removeMany(ids: string[], requester: AuthUser) {
+    const uniqueIds = [...new Set(ids.filter((id) => Types.ObjectId.isValid(id)))];
+    if (uniqueIds.length === 0) {
+      return { message: 'No notifications deleted', deletedCount: 0 };
+    }
+    const result = await this.notificationModel.deleteMany({
+      _id: { $in: uniqueIds.map((id) => new Types.ObjectId(id)) },
+      userId: new Types.ObjectId(requester.userId),
+    });
+    return {
+      message: 'Notifications deleted',
+      deletedCount: result.deletedCount ?? 0,
+    };
+  }
 }

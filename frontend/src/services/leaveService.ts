@@ -55,8 +55,10 @@ export const leaveApi = {
     isHalfDay?: boolean;
     halfDaySession?: 'AM' | 'PM';
   }) => api.post<{ message: string }>('/leaves', data),
-  approve: (id: string) => api.patch<{ message: string }>(`/leaves/${id}/approve`),
-  reject: (id: string) => api.patch<{ message: string }>(`/leaves/${id}/reject`),
+  approve: (id: string, reason?: string) =>
+    api.patch<{ message: string }>(`/leaves/${id}/approve`, { reason }),
+  reject: (id: string, reason?: string) =>
+    api.patch<{ message: string }>(`/leaves/${id}/reject`, { reason }),
 };
 
 export default leaveApi;

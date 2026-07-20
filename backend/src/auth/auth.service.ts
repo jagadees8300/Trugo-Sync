@@ -44,9 +44,10 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     const token = randomBytes(24).toString('hex');
-    const updated = await this.usersService.setResetToken(email, token);
+    const normalized = email.trim().toLowerCase();
+    const resetResult = await this.usersService.setResetToken(normalized, token);
 
-    if (!updated) {
+    if (!resetResult.ok || !resetResult.email) {
       return {
         message:
           'If that email is in our database, we will send a password reset link to it.',
@@ -54,12 +55,12 @@ export class AuthService {
     }
 
     const frontendUrl = (
-      process.env.FRONTEND_URL || 'http://localhost:3000'
+      process.env.FRONTEND_URL || 'http://localhost:5000'
     ).replace(/\/$/, '');
     const resetLink = `${frontendUrl}/reset-password/${token}`;
 
     const mailResult = await this.mailService.sendPasswordResetEmail(
-      email,
+      resetResult.email,
       resetLink,
     );
 

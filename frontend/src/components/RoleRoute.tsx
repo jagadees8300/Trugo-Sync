@@ -10,9 +10,14 @@ interface RoleRouteProps {
 
 export function RoleRoute({ roles, children }: RoleRouteProps) {
   const role = getUserRole() as AppRole;
+  const home = getHomePathForRole(role);
 
+  // Prevent blank-page redirect loops (e.g. CLIENT -> /my-home -> CLIENT again).
   if (!roles.includes(role)) {
-    return <Navigate to={getHomePathForRole(role)} replace />;
+    if (typeof window !== 'undefined' && window.location.pathname === home) {
+      return <Navigate to="/login" replace />;
+    }
+    return <Navigate to={home} replace />;
   }
 
   return <ProtectedRoute>{children}</ProtectedRoute>;

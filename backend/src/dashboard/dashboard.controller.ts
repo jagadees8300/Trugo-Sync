@@ -14,9 +14,9 @@ export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('my-stats')
-  @ApiOperation({ summary: 'Get my task statistics (employee)' })
+  @ApiOperation({ summary: 'Get my task statistics (employee / client scoped)' })
   getMyStats(@Request() req: { user: AuthUser }) {
-    return this.dashboardService.getMyStats(req.user.userId);
+    return this.dashboardService.getMyStats(req.user);
   }
 
   @Get('stats')

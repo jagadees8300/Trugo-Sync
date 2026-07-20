@@ -1,11 +1,12 @@
+import { useState } from 'react';
 import type { LeaveRequest } from '../types';
 
 interface LeaveTableProps {
   leaves: LeaveRequest[];
   loading?: boolean;
   actingId?: string | null;
-  onApprove?: (id: string) => void;
-  onReject?: (id: string) => void;
+  onApprove?: (id: string, reason?: string) => void;
+  onReject?: (id: string, reason?: string) => void;
   onEmployeeClick?: (employeeId: string, employeeName: string) => void;
   showActions?: boolean;
   showEmployeeLink?: boolean;
@@ -34,6 +35,36 @@ const LeaveTable = ({
   showActions = true,
   showEmployeeLink = true,
 }: LeaveTableProps) => {
+  const [pending, setPending] = useState<
+    { id: string; action: 'approve' | 'reject' } | null
+  >(null);
+  const [reason, setReason] = useState('');
+
+  const startAction = (id: string, action: 'approve' | 'reject') => {
+    setPending({ id, action });
+    setReason('');
+  };
+
+  const cancelAction = () => {
+    setPending(null);
+    setReason('');
+  };
+
+  const confirmAction = () => {
+    if (!pending) return;
+    const trimmed = reason.trim();
+    if (pending.action === 'reject' && !trimmed) {
+      return;
+    }
+    if (pending.action === 'approve') {
+      onApprove?.(pending.id, trimmed || undefined);
+    } else {
+      onReject?.(pending.id, trimmed || undefined);
+    }
+    setPending(null);
+    setReason('');
+  };
+
   if (loading) {
     return <p className="text-muted">Loading leave requests...</p>;
   }
@@ -60,6 +91,7 @@ const LeaveTable = ({
             {leaves.map((leave) => {
               const badge = statusStyle(leave.status);
               const busy = actingId === leave._id;
+              const isActing = pending?.id === leave._id;
               return (
                 <tr key={leave._id}>
                   <td>
@@ -92,37 +124,107 @@ const LeaveTable = ({
                     >
                       {leave.status}
                     </span>
+                    {leave.status !== 'Pending' && leave.decisionReason && (
+                      <p
+                        style={{
+                          margin: '6px 0 0',
+                          fontSize: 12,
+                          color: 'var(--text-muted)',
+                          maxWidth: 260,
+                        }}
+                        title={leave.decisionReason}
+                      >
+                        <strong>Reason:</strong> {leave.decisionReason}
+                      </p>
+                    )}
                   </td>
                   {showActions && (
                     <td>
                       {leave.status === 'Pending' && onApprove && onReject ? (
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            style={{ width: 'auto', padding: '6px 12px', fontSize: 12 }}
-                            disabled={busy}
-                            onClick={() => onApprove(leave._id)}
-                          >
-                            {busy ? '...' : 'Approve'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn"
-                            style={{
-                              width: 'auto',
-                              padding: '6px 12px',
-                              fontSize: 12,
-                              border: '1px solid #ef4444',
-                              color: '#b91c1c',
-                              background: '#fff',
-                            }}
-                            disabled={busy}
-                            onClick={() => onReject(leave._id)}
-                          >
-                            Reject
-                          </button>
-                        </div>
+                        isActing ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220 }}>
+                            <textarea
+                              autoFocus
+                              value={reason}
+                              onChange={(e) => setReason(e.target.value)}
+                              placeholder={
+                                pending?.action === 'approve'
+                                  ? 'Reason / message for employee (optional)'
+                                  : 'Reason for rejection (required)'
+                              }
+                              rows={2}
+                              style={{
+                                width: '100%',
+                                fontSize: 12,
+                                padding: '6px 8px',
+                                borderRadius: 8,
+                                border: '1px solid #e5e7eb',
+                                resize: 'vertical',
+                              }}
+                            />
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ width: 'auto', padding: '6px 12px', fontSize: 12 }}
+                                disabled={
+                                  busy ||
+                                  (pending?.action === 'reject' && !reason.trim())
+                                }
+                                onClick={confirmAction}
+                              >
+                                {busy
+                                  ? '...'
+                                  : pending?.action === 'approve'
+                                    ? 'Confirm Approve'
+                                    : 'Confirm Reject'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn"
+                                style={{
+                                  width: 'auto',
+                                  padding: '6px 12px',
+                                  fontSize: 12,
+                                  border: '1px solid #e5e7eb',
+                                  background: '#fff',
+                                }}
+                                disabled={busy}
+                                onClick={cancelAction}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{ width: 'auto', padding: '6px 12px', fontSize: 12 }}
+                              disabled={busy}
+                              onClick={() => startAction(leave._id, 'approve')}
+                            >
+                              {busy ? '...' : 'Approve'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              style={{
+                                width: 'auto',
+                                padding: '6px 12px',
+                                fontSize: 12,
+                                border: '1px solid #ef4444',
+                                color: '#b91c1c',
+                                background: '#fff',
+                              }}
+                              disabled={busy}
+                              onClick={() => startAction(leave._id, 'reject')}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )
                       ) : (
                         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
                       )}

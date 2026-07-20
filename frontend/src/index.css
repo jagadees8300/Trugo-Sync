@@ -535,19 +535,70 @@ p {
 }
 
 .kanban-card--overdue {
-  border-color: #fca5a5;
-  background: #fef2f2;
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.kanban-card__overdue {
+  font-size: 10px;
+  font-weight: 700;
+  color: #1d4ed8;
+  background: #dbeafe;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.kanban-card--client-high {
+  border: 2px solid #ef4444;
+  background: #fff7f7;
 }
 
 .kanban-card__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+.kanban-card__top-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.kanban-card__client {
+  font-size: 10px;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.kanban-card__meta-client {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+  font-weight: 600;
+}
+
+.kanban-card__meta-time {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  font-weight: 600;
 }
 
 .kanban-card__grip {
   color: #d1d5db;
+  flex-shrink: 0;
 }
 
 .kanban-card__priority {
@@ -588,6 +639,51 @@ p {
   background: #f9fafb;
   padding: 2px 8px;
   border-radius: 4px;
+}
+
+.task-details-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+}
+
+.skeleton-line {
+  height: 16px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.skeleton-line--lg {
+  height: 28px;
+  width: 70%;
+}
+
+.skeleton-line--md {
+  width: 45%;
+}
+
+.skeleton-line--sm {
+  width: 30%;
+}
+
+.skeleton-card {
+  height: 180px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Create Task — full-screen vertical layout */

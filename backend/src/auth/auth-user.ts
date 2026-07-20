@@ -3,7 +3,8 @@ export type AppRole =
   | 'HR'
   | 'PROJECT_MANAGER'
   | 'TEAM_LEAD'
-  | 'EMPLOYEE';
+  | 'EMPLOYEE'
+  | 'CLIENT';
 
 export const ALL_APP_ROLES: AppRole[] = [
   'ADMIN',
@@ -11,6 +12,7 @@ export const ALL_APP_ROLES: AppRole[] = [
   'PROJECT_MANAGER',
   'TEAM_LEAD',
   'EMPLOYEE',
+  'CLIENT',
 ];
 
 export type AuthUser = {
@@ -85,4 +87,8 @@ export function usesAdminHome(user?: AuthUser | { role?: string }) {
 
 export function usesAdminLeave(user?: AuthUser | { role?: string }) {
   return canApproveLeave(user);
+}
+
+export function isClient(user?: AuthUser | { role?: string }) {
+  return user?.role === 'CLIENT';
 }

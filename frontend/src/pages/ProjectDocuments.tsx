@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Download, Eye, FileText, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, Eye, FileText, Trash2, Upload } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
-import { dashboardApi, projectsApi } from '../services/api';
-import { isAdmin } from '../utils/task';
+import { projectsApi } from '../services/api';
+import { isAdmin, isClientRole } from '../utils/task';
 import type { ProjectDocumentFile, User } from '../types';
 
 const formatBytes = (bytes: number) => {
@@ -24,25 +24,42 @@ const canPreviewInline = (mimeType: string) =>
 const ProjectDocumentsPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const admin = isAdmin();
+  const client = isClientRole();
   const [projectName, setProjectName] = useState('');
   const [documents, setDocuments] = useState<ProjectDocumentFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const load = async () => {
     if (!projectId) return;
     setLoading(true);
     setError('');
     try {
-      const [detailRes, docsRes] = await Promise.all([
-        dashboardApi.getProjectDetail(projectId),
+      const [projectRes, docsRes] = await Promise.all([
+        projectsApi.getById(projectId).catch(() => null),
         projectsApi.listDocuments(projectId),
       ]);
-      setProjectName(detailRes.data.project.name);
-      setDocuments(docsRes.data);
-    } catch {
-      setError('Failed to load documents.');
+      if (projectRes?.data?.name) {
+        setProjectName(projectRes.data.name);
+      }
+      setDocuments(Array.isArray(docsRes.data) ? docsRes.data : []);
+    } catch (err) {
+      console.error('Failed to load documents', err);
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const apiMessage = (err as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      setError(
+        typeof apiMessage === 'string'
+          ? apiMessage
+          : status === 403
+            ? 'You do not have access to these documents.'
+            : 'Failed to load documents.',
+      );
+      setDocuments([]);
     } finally {
       setLoading(false);
     }
@@ -51,6 +68,29 @@ const ProjectDocumentsPage = () => {
   useEffect(() => {
     void load();
   }, [projectId]);
+
+  const handleUpload = async () => {
+    if (!projectId || !selectedFile) return;
+    setUploading(true);
+    setError('');
+    try {
+      await projectsApi.uploadDocument(projectId, selectedFile);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await load();
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string | string[] } } })?.response?.data
+          ?.message;
+      setError(
+        Array.isArray(message)
+          ? message.join(', ')
+          : message || 'Upload failed. Use PDF, images, Word, Excel, text, or ZIP (max 10MB).',
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const openDocument = async (
     doc: ProjectDocumentFile,
@@ -100,7 +140,9 @@ const ProjectDocumentsPage = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
           <button
             type="button"
-            onClick={() => navigate(projectId ? `/projects/${projectId}` : '/projects')}
+            onClick={() =>
+              navigate(projectId ? (client ? '/client-home' : `/projects/${projectId}`) : '/projects')
+            }
             style={{
               background: 'none',
               border: 'none',
@@ -122,6 +164,43 @@ const ProjectDocumentsPage = () => {
           </div>
         </div>
 
+        <div className="card" style={{ padding: 16, marginBottom: 20 }}>
+          <h4 style={{ margin: '0 0 12px', fontSize: 14 }}>
+            {client ? 'Upload a file for the team' : 'Upload document'}
+          </h4>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.zip,.doc,.docx,.xls,.xlsx"
+              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              style={{ fontSize: 13, maxWidth: 260 }}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!selectedFile || uploading}
+              onClick={() => void handleUpload()}
+              style={{
+                width: 'auto',
+                padding: '8px 14px',
+                fontSize: 13,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                opacity: !selectedFile || uploading ? 0.6 : 1,
+              }}
+            >
+              <Upload size={16} />
+              {uploading ? 'Uploading…' : 'Upload'}
+            </button>
+          </div>
+          <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+            PDF, images, Word, Excel, text, or ZIP · max 10MB
+            {client ? ' · Admin and employees on this project can view your files' : ''}
+          </p>
+        </div>
+
         {error && (
           <p style={{ margin: '0 0 16px', fontSize: 13, color: '#dc2626' }}>{error}</p>
         )}
@@ -131,7 +210,7 @@ const ProjectDocumentsPage = () => {
         ) : documents.length === 0 ? (
           <div className="card" style={{ padding: 24, textAlign: 'center' }}>
             <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 14 }}>
-              No documents uploaded yet. Go back and use Upload on the project page.
+              No documents uploaded yet. Use Upload above to add a file.
             </p>
           </div>
         ) : (
@@ -173,7 +252,13 @@ const ProjectDocumentsPage = () => {
                       {' · '}
                       {uploaderName(doc.uploadedBy)}
                       {doc.createdAt
-                        ? ` · ${new Date(doc.createdAt).toLocaleDateString()}`
+                        ? ` · ${new Date(doc.createdAt).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}`
                         : ''}
                     </p>
                   </div>

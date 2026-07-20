@@ -14,7 +14,11 @@ import type {
 } from '../types';
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  import.meta.env.VITE_API_URL !== undefined
+    ? import.meta.env.VITE_API_URL
+    : import.meta.env.PROD
+      ? ''
+      : 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -54,6 +58,7 @@ export const authApi = {
 export const usersApi = {
   getAll: () => api.get<User[]>('/users'),
   getAssignees: () => api.get<User[]>('/users/assignees'),
+  getClients: () => api.get<User[]>('/users/clients'),
   create: (data: {
     name: string;
     email: string;
@@ -71,12 +76,27 @@ export const projectsApi = {
   create: (data: {
     name: string;
     clientName?: string;
+    clientUserId?: string;
     description?: string;
     teamMembers?: string[];
     startDate?: string;
     deadline?: string;
     categories: string[];
   }) => api.post<Project>('/projects', data),
+  update: (
+    id: string,
+    data: {
+      name?: string;
+      clientName?: string;
+      clientUserId?: string | null;
+      description?: string;
+      teamMembers?: string[];
+      startDate?: string;
+      deadline?: string;
+      categories?: string[];
+    },
+  ) => api.patch<Project>(`/projects/${id}`, data),
+  delete: (id: string) => api.delete<{ message: string }>(`/projects/${id}`),
   addStage: (projectId: string, data: { name: string; color?: string }) =>
     api.post<Project>(`/projects/${projectId}/stages`, data),
   listMilestones: (projectId: string) =>
@@ -120,7 +140,8 @@ export const tasksApi = {
   }) => api.get<Task[]>('/tasks', { params }),
   getByUser: (userId: string, status?: string) =>
     api.get<Task[]>(`/tasks/user/${userId}`, { params: status ? { status } : undefined }),
-  getById: (id: string) => api.get<Task>(`/tasks/${id}`),
+  getById: (id: string) =>
+    api.get<Task & { subtasks?: Task[] }>(`/tasks/${id}`),
   getSubtasks: (id: string) => api.get<Task[]>(`/tasks/${id}/subtasks`),
   create: (data: {
     title: string;
@@ -150,6 +171,13 @@ export const notificationsApi = {
   getUnread: (userId: string) =>
     api.get<Notification[]>(`/notifications/${userId}`),
   markRead: (id: string) => api.patch<Notification>(`/notifications/${id}/read`),
+  delete: (id: string) =>
+    api.delete<{ message: string; id: string }>(`/notifications/${id}`),
+  bulkDelete: (ids: string[]) =>
+    api.post<{ message: string; deletedCount: number }>(
+      '/notifications/me/bulk-delete',
+      { ids },
+    ),
 };
 
 export const dashboardApi = {

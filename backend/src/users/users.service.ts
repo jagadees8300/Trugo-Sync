@@ -166,7 +166,19 @@ export class UsersService implements OnModuleInit {
 
   async findAssignees(): Promise<Array<{ _id: string; name: string; email: string }>> {
     const users = await this.userModel
-      .find({ role: { $ne: 'ADMIN' } })
+      .find({ role: { $nin: ['ADMIN', 'CLIENT'] } })
+      .select('name email')
+      .lean();
+    return users.map((u) => ({
+      _id: u._id.toString(),
+      name: u.name,
+      email: u.email,
+    }));
+  }
+
+  async findClients(): Promise<Array<{ _id: string; name: string; email: string }>> {
+    const users = await this.userModel
+      .find({ role: 'CLIENT' })
       .select('name email')
       .lean();
     return users.map((u) => ({
@@ -262,13 +274,26 @@ export class UsersService implements OnModuleInit {
     };
   }
 
-  async setResetToken(email: string, token: string): Promise<boolean> {
+  async setResetToken(
+    email: string,
+    token: string,
+  ): Promise<{ ok: boolean; email?: string }> {
     const expires = new Date();
     expires.setHours(expires.getHours() + 1);
 
     const normalized = email.trim().toLowerCase();
-    const result = await this.userModel.updateOne(
-      { email: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+    const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const user = await this.userModel
+      .findOne({ email: new RegExp(`^${escaped}$`, 'i') })
+      .select('email')
+      .lean();
+
+    if (!user?.email) {
+      return { ok: false };
+    }
+
+    await this.userModel.updateOne(
+      { _id: user._id },
       {
         $set: {
           resetPasswordToken: token,
@@ -276,7 +301,7 @@ export class UsersService implements OnModuleInit {
         },
       },
     );
-    return result.matchedCount > 0;
+    return { ok: true, email: user.email };
   }
 
   async findByResetToken(token: string) {

@@ -15,6 +15,7 @@ import { LeaveService } from './leave.service';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
 import { UpdateLeaveBalanceDto } from './dto/update-leave-balance.dto';
+import { DecideLeaveDto } from './dto/decide-leave.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -157,14 +158,22 @@ export class LeaveController {
   @Patch(':id/approve')
   @Roles('ADMIN', 'HR')
   @ApiOperation({ summary: 'Approve leave request (admin/HR)' })
-  approve(@Param('id') id: string) {
-    return this.leaveService.approve(id);
+  approve(
+    @Param('id') id: string,
+    @Body() dto: DecideLeaveDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.leaveService.approve(id, dto.reason, req.user);
   }
 
   @Patch(':id/reject')
   @Roles('ADMIN', 'HR')
   @ApiOperation({ summary: 'Reject leave request (admin/HR)' })
-  reject(@Param('id') id: string) {
-    return this.leaveService.reject(id);
+  reject(
+    @Param('id') id: string,
+    @Body() dto: DecideLeaveDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.leaveService.reject(id, dto.reason, req.user);
   }
 }

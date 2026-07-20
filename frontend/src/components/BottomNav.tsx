@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, CheckSquare, Folder, Video, CalendarDays } from 'lucide-react';
-import { getHomePathForRole, getLeavePathForRole, getUserRole } from '../utils/task';
+import { Home, CheckSquare, Folder, Video, CalendarDays, Bell } from 'lucide-react';
+import { getHomePathForRole, getLeavePathForRole, getUserRole, isClientRole } from '../utils/task';
 import { DAILY_MEETING_URL } from '../constants/meeting';
 import BrandLogo from './BrandLogo';
 
@@ -10,6 +10,7 @@ const BottomNav = () => {
   const role = getUserRole();
   const homePath = getHomePathForRole(role);
   const leavePath = getLeavePathForRole(role);
+  const client = isClientRole(role);
 
   return (
     <div className="bottom-nav">
@@ -36,27 +37,39 @@ const BottomNav = () => {
         <Folder size={20} />
         <span>Projects</span>
       </Link>
-      <Link to="/tasks" className={`nav-item ${path.startsWith('/tasks') ? 'active' : ''}`}>
+      <Link to="/tasks" className={`nav-item ${path.startsWith('/tasks') || path === '/create-task' ? 'active' : ''}`}>
         <CheckSquare size={20} />
         <span>Tasks</span>
       </Link>
-      <a
-        href={DAILY_MEETING_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="nav-item"
-        style={{ textDecoration: 'none', color: 'inherit' }}
-      >
-        <Video size={20} />
-        <span>Meet</span>
-      </a>
-      <Link
-        to={leavePath}
-        className={`nav-item ${path === leavePath || path.startsWith('/my-leave') || path.startsWith('/leave') ? 'active' : ''}`}
-      >
-        <CalendarDays size={20} />
-        <span>Leave</span>
-      </Link>
+      {client ? (
+        <Link
+          to="/notifications"
+          className={`nav-item ${path.startsWith('/notifications') ? 'active' : ''}`}
+        >
+          <Bell size={20} />
+          <span>Alerts</span>
+        </Link>
+      ) : (
+        <a
+          href={DAILY_MEETING_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="nav-item"
+          style={{ textDecoration: 'none', color: 'inherit' }}
+        >
+          <Video size={20} />
+          <span>Meet</span>
+        </a>
+      )}
+      {!client && (
+        <Link
+          to={leavePath}
+          className={`nav-item ${path === leavePath || path.startsWith('/my-leave') || path.startsWith('/leave') ? 'active' : ''}`}
+        >
+          <CalendarDays size={20} />
+          <span>Leave</span>
+        </Link>
+      )}
     </div>
   );
 };

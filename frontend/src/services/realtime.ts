@@ -1,7 +1,11 @@
 import { io, Socket } from 'socket.io-client';
 
 const REALTIME_URL =
-  import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  import.meta.env.VITE_API_URL !== undefined
+    ? import.meta.env.VITE_API_URL
+    : import.meta.env.PROD
+      ? window.location.origin
+      : 'http://localhost:5000';
 
 let socket: Socket | null = null;
 

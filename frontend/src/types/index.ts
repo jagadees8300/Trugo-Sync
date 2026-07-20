@@ -3,7 +3,8 @@ export type AppRole =
   | 'HR'
   | 'PROJECT_MANAGER'
   | 'TEAM_LEAD'
-  | 'EMPLOYEE';
+  | 'EMPLOYEE'
+  | 'CLIENT';
 
 export const ALL_APP_ROLES: AppRole[] = [
   'ADMIN',
@@ -11,6 +12,7 @@ export const ALL_APP_ROLES: AppRole[] = [
   'PROJECT_MANAGER',
   'TEAM_LEAD',
   'EMPLOYEE',
+  'CLIENT',
 ];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
@@ -19,6 +21,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   PROJECT_MANAGER: 'Project Manager',
   TEAM_LEAD: 'Team Lead',
   EMPLOYEE: 'Employee',
+  CLIENT: 'Client',
 };
 
 export interface User {
@@ -42,6 +45,7 @@ export interface Project {
   _id: string;
   name: string;
   clientName?: string;
+  clientUserId?: string | User;
   description?: string;
   categories?: string[];
   deadline?: string;
@@ -82,6 +86,9 @@ export interface Task {
   project?: Project;
   projectId?: string;
   assignedTo?: User;
+  createdBy?: User;
+  /** True when a CLIENT created this task (drives red card styling). */
+  fromClient?: boolean;
   comments?: TaskComment[];
   history?: TaskHistoryEntry[];
   parentTaskId?: string | { _id: string; title: string; status: string };
@@ -105,7 +112,7 @@ export interface Notification {
   userId: string;
   message: string;
   readStatus: boolean;
-  type: 'TASK_ASSIGNED' | 'OVERDUE' | 'COMMENT_ADDED' | 'LEAVE_SUBMITTED';
+  type: 'TASK_ASSIGNED' | 'OVERDUE' | 'COMMENT_ADDED' | 'LEAVE_SUBMITTED' | 'LEAVE_APPROVED' | 'LEAVE_REJECTED' | 'DOCUMENT_UPLOADED';
   createdAt: string;
   senderId?: string | null;
   sender?: { _id: string; name: string; email?: string } | null;
@@ -118,6 +125,7 @@ export interface DashboardStats {
   completed: number;
   pending: number;
   inProgress: number;
+  highPriority?: number;
   stageCounts?: Record<string, number>;
 }
 
@@ -169,6 +177,8 @@ export interface LeaveRequest {
   isHalfDay?: boolean;
   halfDaySession?: 'AM' | 'PM';
   status: 'Pending' | 'Approved' | 'Rejected';
+  decisionReason?: string;
+  decidedAt?: string;
   createdAt?: string;
 }
 

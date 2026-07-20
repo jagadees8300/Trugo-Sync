@@ -111,10 +111,10 @@ const LeavePage = () => {
       })
     : null;
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async (id: string, reason?: string) => {
     setActingId(id);
     try {
-      const res = await leaveApi.approve(id);
+      const res = await leaveApi.approve(id, reason);
       showToast(res.data.message || 'Leave Approved Successfully');
       await loadMain();
       await refreshDatePeople(selectedDate);
@@ -129,10 +129,10 @@ const LeavePage = () => {
     }
   };
 
-  const handleReject = async (id: string) => {
+  const handleReject = async (id: string, reason?: string) => {
     setActingId(id);
     try {
-      const res = await leaveApi.reject(id);
+      const res = await leaveApi.reject(id, reason);
       showToast(res.data.message || 'Leave Rejected Successfully');
       await loadMain();
     } catch {

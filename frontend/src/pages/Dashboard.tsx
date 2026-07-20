@@ -6,7 +6,7 @@ import NotificationBell from '../components/NotificationBell';
 import UserMenu from '../components/UserMenu';
 import { dashboardApi, authApi } from '../services/api';
 import { DAILY_MEETING_URL } from '../constants/meeting';
-import { resolveAvatarUrl } from '../utils/task';
+import { resolveAvatarUrl, isAdmin } from '../utils/task';
 import type {
   DashboardStats,
   TeamMemberStatus,
@@ -26,7 +26,13 @@ const formatDeadline = (dateStr: string) => {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [stats, setStats] = useState<DashboardStats>({ total: 0, completed: 0, pending: 0, inProgress: 0 });
+  const [stats, setStats] = useState<DashboardStats>({
+    total: 0,
+    completed: 0,
+    pending: 0,
+    inProgress: 0,
+    highPriority: 0,
+  });
   const [team, setTeam] = useState<TeamMemberStatus[]>([]);
   const [projects, setProjects] = useState<ProjectProgress[]>([]);
   const [deadlines, setDeadlines] = useState<ProjectDeadline[]>([]);
@@ -98,17 +104,19 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-          <Link to="/create-task" className="btn btn-primary" style={{ flex: 1, padding: '12px 0', fontSize: 14, textAlign: 'center', textDecoration: 'none' }}>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+          <Link to="/create-task" className="btn btn-primary" style={{ flex: 1, minWidth: 140, padding: '12px 0', fontSize: 14, textAlign: 'center', textDecoration: 'none' }}>
             + Create Task
           </Link>
-          <Link to="/create-project" className="btn" style={{ flex: 1, border: '1px solid var(--primary)', color: 'var(--primary)', background: 'transparent', padding: '12px 0', fontSize: 14, textAlign: 'center', textDecoration: 'none' }}>
-            + Create Project
-          </Link>
-          <Link to="/reports" className="btn" style={{ flex: 1, border: '1px solid #e5e7eb', color: '#374151', background: 'transparent', padding: '12px 0', fontSize: 14, textAlign: 'center', textDecoration: 'none' }}>
+          {isAdmin() && (
+            <Link to="/create-project" className="btn" style={{ flex: 1, minWidth: 140, border: '1px solid var(--primary)', color: 'var(--primary)', background: 'transparent', padding: '12px 0', fontSize: 14, textAlign: 'center', textDecoration: 'none' }}>
+              + Create Project
+            </Link>
+          )}
+          <Link to="/reports" className="btn" style={{ flex: 1, minWidth: 140, border: '1px solid #e5e7eb', color: '#374151', background: 'transparent', padding: '12px 0', fontSize: 14, textAlign: 'center', textDecoration: 'none' }}>
             Reports
           </Link>
-          <Link to="/projects" className="btn" style={{ flex: 1, border: '1px solid #e5e7eb', color: '#374151', background: 'transparent', padding: '12px 0', fontSize: 14, textAlign: 'center', textDecoration: 'none' }}>
+          <Link to="/projects" className="btn" style={{ flex: 1, minWidth: 140, border: '1px solid #e5e7eb', color: '#374151', background: 'transparent', padding: '12px 0', fontSize: 14, textAlign: 'center', textDecoration: 'none' }}>
             View Projects
           </Link>
         </div>
@@ -126,18 +134,37 @@ const Dashboard = () => {
         {loading ? (
           <p className="text-muted">Loading...</p>
         ) : (
-          <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-            <div className="card" style={{ flex: 1, textAlign: 'center', padding: '16px 8px' }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+            <div className="card" style={{ flex: '1 1 120px', textAlign: 'center', padding: '16px 8px' }}>
               <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>TOTAL</p>
               <h2 style={{ margin: 0 }}>{pad(stats.total)}</h2>
             </div>
-            <div className="card" style={{ flex: 1, textAlign: 'center', padding: '16px 8px' }}>
+            <div className="card" style={{ flex: '1 1 120px', textAlign: 'center', padding: '16px 8px' }}>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>IN PROGRESS</p>
+              <h2 style={{ margin: 0 }}>{pad(stats.inProgress ?? 0)}</h2>
+            </div>
+            <div className="card" style={{ flex: '1 1 120px', textAlign: 'center', padding: '16px 8px' }}>
               <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>COMPLETED</p>
               <h2 style={{ margin: 0 }}>{pad(stats.completed)}</h2>
             </div>
-            <div className="card" style={{ flex: 1, textAlign: 'center', padding: '16px 8px' }}>
+            <div className="card" style={{ flex: '1 1 120px', textAlign: 'center', padding: '16px 8px' }}>
               <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>PENDING</p>
               <h2 style={{ margin: 0 }}>{pad(stats.pending)}</h2>
+            </div>
+            <div
+              className="card"
+              style={{
+                flex: '1 1 120px',
+                textAlign: 'center',
+                padding: '16px 8px',
+                border: '1px solid #fecaca',
+                background: '#fef2f2',
+              }}
+            >
+              <p style={{ fontSize: 12, color: '#b91c1c', marginBottom: 8, fontWeight: 700 }}>
+                HIGH PRIORITY
+              </p>
+              <h2 style={{ margin: 0, color: '#b91c1c' }}>{pad(stats.highPriority ?? 0)}</h2>
             </div>
           </div>
         )}

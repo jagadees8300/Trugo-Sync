@@ -7,7 +7,10 @@ export type NotificationType =
   | 'TASK_ASSIGNED'
   | 'OVERDUE'
   | 'COMMENT_ADDED'
-  | 'LEAVE_SUBMITTED';
+  | 'LEAVE_SUBMITTED'
+  | 'LEAVE_APPROVED'
+  | 'LEAVE_REJECTED'
+  | 'DOCUMENT_UPLOADED';
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false } })
 export class Notification {
@@ -30,7 +33,15 @@ export class Notification {
 
   @Prop({
     required: true,
-    enum: ['TASK_ASSIGNED', 'OVERDUE', 'COMMENT_ADDED', 'LEAVE_SUBMITTED'],
+    enum: [
+      'TASK_ASSIGNED',
+      'OVERDUE',
+      'COMMENT_ADDED',
+      'LEAVE_SUBMITTED',
+      'LEAVE_APPROVED',
+      'LEAVE_REJECTED',
+      'DOCUMENT_UPLOADED',
+    ],
   })
   type: NotificationType;
 }

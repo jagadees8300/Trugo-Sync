@@ -23,6 +23,7 @@ const MyHome = () => {
     completed: 0,
     pending: 0,
     inProgress: 0,
+    highPriority: 0,
   });
   const [projectStats, setProjectStats] = useState<ProjectHomeStats>({
     total: 0,
@@ -71,19 +72,38 @@ const MyHome = () => {
   const pad = (n: number) => String(n).padStart(2, '0');
 
   const renderStatCards = (
-    cards: { label: string; value: number }[],
+    cards: { label: string; value: number; highlight?: boolean }[],
   ) => (
     <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
       {cards.map((card) => (
         <div
           key={card.label}
           className="card"
-          style={{ flex: '1 1 140px', textAlign: 'center', padding: 16 }}
+          style={{
+            flex: '1 1 140px',
+            textAlign: 'center',
+            padding: 16,
+            ...(card.highlight
+              ? {
+                  border: '1px solid #fecaca',
+                  background: '#fef2f2',
+                }
+              : {}),
+          }}
         >
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 8px' }}>
+          <p
+            style={{
+              fontSize: 12,
+              color: card.highlight ? '#b91c1c' : 'var(--text-muted)',
+              margin: '0 0 8px',
+              fontWeight: card.highlight ? 700 : 400,
+            }}
+          >
             {card.label}
           </p>
-          <h2 style={{ margin: 0 }}>{loading ? '--' : pad(card.value)}</h2>
+          <h2 style={{ margin: 0, color: card.highlight ? '#b91c1c' : undefined }}>
+            {loading ? '--' : pad(card.value)}
+          </h2>
         </div>
       ))}
     </div>
@@ -125,9 +145,10 @@ const MyHome = () => {
 
         {renderStatCards([
           { label: 'MY TASKS', value: stats.total },
+          { label: 'IN PROGRESS', value: stats.inProgress ?? 0 },
           { label: 'COMPLETED', value: stats.completed },
-          { label: 'IN PROGRESS', value: stats.inProgress },
           { label: 'PENDING', value: stats.pending },
+          { label: 'HIGH PRIORITY', value: stats.highPriority ?? 0, highlight: true },
         ])}
 
         {renderStatCards([

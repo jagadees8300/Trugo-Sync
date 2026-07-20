@@ -32,6 +32,15 @@ export class UsersController {
     return this.usersService.findAssignees();
   }
 
+  @Get('clients')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'PROJECT_MANAGER', 'TEAM_LEAD')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'List client users for project assignment' })
+  async findClients() {
+    return this.usersService.findClients();
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')

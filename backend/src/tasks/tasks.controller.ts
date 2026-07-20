@@ -38,7 +38,7 @@ export class TasksController {
   @ApiOperation({ summary: 'Create task and notify assignee' })
   @ApiResponse({ status: 201, description: 'Task created' })
   create(@Body() createTaskDto: CreateTaskDto, @Request() req: { user: AuthUser }) {
-    return this.tasksService.create(createTaskDto, req.user?.userId);
+    return this.tasksService.create(createTaskDto, req.user?.userId, req.user);
   }
 
   @Get()
@@ -103,7 +103,8 @@ export class TasksController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update task fields' })
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Update task fields (admin only)' })
   update(
     @Param('id') id: string,
     @Body() updateTaskDto: UpdateTaskDto,
@@ -123,8 +124,8 @@ export class TasksController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN', 'PROJECT_MANAGER', 'TEAM_LEAD')
-  @ApiOperation({ summary: 'Delete task' })
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Delete task (admin only)' })
   remove(@Param('id') id: string) {
     return this.tasksService.remove(id);
   }

@@ -4,6 +4,7 @@ import { RoleRoute } from './components/RoleRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import MyHome from './pages/MyHome';
+import ClientHome from './pages/ClientHome';
 import CreateProject from './pages/CreateProject';
 import ProjectList from './pages/ProjectList';
 import Splash from './pages/Splash';
@@ -67,6 +68,14 @@ function App() {
           }
         />
         <Route
+          path="/client-home"
+          element={
+            <RoleRoute roles={['CLIENT']}>
+              <ClientHome />
+            </RoleRoute>
+          }
+        />
+        <Route
           path="/projects"
           element={
             <ProtectedRoute>
@@ -117,9 +126,9 @@ function App() {
         <Route
           path="/create-project"
           element={
-            <ProtectedRoute>
+            <RoleRoute roles={['ADMIN']}>
               <CreateProject />
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route

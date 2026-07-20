@@ -4,7 +4,7 @@ import { ArrowLeft, Search, SlidersHorizontal, ChevronRight, Plus, LayoutList, C
 import BottomNav from '../components/BottomNav';
 import KanbanBoard from '../components/KanbanBoard';
 import { tasksApi, usersApi } from '../services/api';
-import { getCurrentUserId, isAdmin, isTaskOverdue, normalizeTaskStatus } from '../utils/task';
+import { getCurrentUserId, isAdmin, isClientRole, isTaskOverdue, normalizeTaskStatus, formatDateTime, isClientAssignedTask } from '../utils/task';
 import type { Task, User } from '../types';
 
 const STATUS_TABS = [
@@ -36,6 +36,7 @@ const TaskList = () => {
   const [searchParams] = useSearchParams();
   const currentUserId = getCurrentUserId();
   const admin = isAdmin();
+  const client = isClientRole();
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -53,14 +54,12 @@ const TaskList = () => {
       setLoading(true);
       try {
         const baseParams = { assignedTo: assigneeId, search: search || undefined };
+        const statusFilter = activeTab === 'ALL' ? undefined : activeTab;
         const [allRes, filteredRes, usersRes] = await Promise.all([
           tasksApi.getAll(baseParams),
-          viewMode === 'kanban'
-            ? tasksApi.getAll(baseParams)
-            : tasksApi.getAll({
-                ...baseParams,
-                status: activeTab === 'ALL' ? undefined : activeTab,
-              }),
+          viewMode === 'kanban' || statusFilter === undefined
+            ? Promise.resolve(null)
+            : tasksApi.getAll({ ...baseParams, status: statusFilter }),
           assigneeId
             ? admin
               ? usersApi.getAll()
@@ -68,7 +67,7 @@ const TaskList = () => {
             : Promise.resolve(null),
         ]);
         setAllTasks(allRes.data);
-        setTasks(filteredRes.data);
+        setTasks(filteredRes?.data ?? allRes.data);
         if (assigneeId && usersRes) {
           setUser(usersRes.data.find((u) => u._id === assigneeId) || null);
         }
@@ -90,8 +89,20 @@ const TaskList = () => {
     return allTasks.filter((t) => normalizeTaskStatus(t.status) === tabKey).length;
   };
 
-  const pageTitle = user ? `${user.name} - Tasks` : admin ? 'Tasks' : 'My Tasks';
-  const subtitle = user ? 'Senior Field Agent - North Region' : admin ? 'All team tasks' : 'Assigned to you and created by you';
+  const pageTitle = user
+    ? `${user.name} - Tasks`
+    : admin
+      ? 'Tasks'
+      : client
+        ? 'My Assigned Tasks'
+        : 'My Tasks';
+  const subtitle = user
+    ? 'Tasks for this team member'
+    : admin
+      ? 'All team tasks — including client assignments'
+      : client
+        ? 'Tasks you assigned on your projects'
+        : 'Assigned to you and created by you — including client requests';
 
   return (
     <>
@@ -208,8 +219,8 @@ const TaskList = () => {
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     transition: 'box-shadow 0.2s',
-                    border: overdue ? '1px solid #fca5a5' : undefined,
-                    backgroundColor: overdue ? '#fef2f2' : undefined,
+                    border: overdue ? '1px solid #93c5fd' : undefined,
+                    backgroundColor: overdue ? '#eff6ff' : undefined,
                   }}
                 >
                   <div style={{ flex: 1 }}>
@@ -228,13 +239,54 @@ const TaskList = () => {
                         {normalizeTaskStatus(task.status).replace('_', ' ')}
                       </span>
                       {overdue && (
-                        <span style={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>OVERDUE</span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: '#1d4ed8',
+                            background: '#dbeafe',
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            letterSpacing: '0.3px',
+                          }}
+                        >
+                          OVERDUE
+                        </span>
                       )}
                       <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                         {formatDate(task.updatedAt || task.createdAt)}
                       </span>
                     </div>
                     <h4 style={{ margin: '0 0 6px 0', fontSize: 16 }}>{task.title}</h4>
+                    {(isClientAssignedTask(task) || task.project?.clientName) && (
+                      <p style={{ margin: '0 0 6px', fontSize: 12 }}>
+                        {isClientAssignedTask(task) ? (
+                          <>
+                            <span
+                              style={{
+                                color: '#166534',
+                                fontWeight: 700,
+                                background: '#dcfce7',
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                              }}
+                            >
+                              {task.createdBy?.name || task.project?.clientName || 'Client'}
+                            </span>
+                            {' · Client assigned'}
+                            {task.createdAt ? (
+                              <span style={{ marginLeft: 8, color: '#1d4ed8', fontWeight: 600 }}>
+                                {formatDateTime(task.createdAt)}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            Client: {task.project?.clientName}
+                          </span>
+                        )}
+                      </p>
+                    )}
                     <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
                       {task.description || 'No description'}
                     </p>
@@ -247,7 +299,14 @@ const TaskList = () => {
         )}
 
         <Link
-          to={assigneeId ? `/create-task?assignedTo=${assigneeId}` : '/create-task'}
+          to={
+            client
+              ? '/create-task'
+              : assigneeId
+                ? `/create-task?assignedTo=${assigneeId}`
+                : '/create-task'
+          }
+          title={client ? 'Assign Task' : 'Create Task'}
           style={{
             position: 'fixed',
             bottom: 90,

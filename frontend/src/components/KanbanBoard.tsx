@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GripVertical, Plus } from 'lucide-react';
 import { tasksApi } from '../services/api';
-import { isTaskOverdue, normalizeTaskStatus, type TaskStatus } from '../utils/task';
+import { isTaskOverdue, normalizeTaskStatus, formatDateTime, isClientAssignedTask, isClientHighPriorityTask, type TaskStatus } from '../utils/task';
 import type { ProjectStage, Task } from '../types';
 
 const BASE_COLUMNS: { key: TaskStatus; label: string; color: string }[] = [
@@ -143,11 +143,17 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
                   const isDragging = draggingId === task._id;
                   const isUpdating = updatingId === task._id;
                   const overdue = isTaskOverdue(task);
+                  const fromClient = isClientAssignedTask(task);
+                  const highFromClient = isClientHighPriorityTask(task);
+                  const clientLabel =
+                    fromClient
+                      ? task.createdBy?.name?.trim() || task.project?.clientName?.trim()
+                      : undefined;
 
                   return (
                     <div
                       key={task._id}
-                      className={`kanban-card ${isDragging ? 'kanban-card--dragging' : ''} ${isUpdating ? 'kanban-card--updating' : ''} ${overdue ? 'kanban-card--overdue' : ''}`}
+                      className={`kanban-card ${isDragging ? 'kanban-card--dragging' : ''} ${isUpdating ? 'kanban-card--updating' : ''} ${overdue ? 'kanban-card--overdue' : ''} ${highFromClient ? 'kanban-card--client-high' : ''}`}
                       draggable={!isUpdating}
                       onDragStart={(e) => handleDragStart(e, task._id)}
                       onDragEnd={handleDragEnd}
@@ -156,7 +162,12 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
                       }}
                     >
                       <div className="kanban-card__top">
-                        <GripVertical size={14} className="kanban-card__grip" />
+                        <div className="kanban-card__top-left">
+                          <GripVertical size={14} className="kanban-card__grip" />
+                          {clientLabel && (
+                            <span className="kanban-card__client">{clientLabel}</span>
+                          )}
+                        </div>
                         <span
                           className="kanban-card__priority"
                           style={{ backgroundColor: badge.bg, color: badge.color }}
@@ -164,7 +175,7 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
                           {task.priority}
                         </span>
                         {overdue && (
-                          <span style={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>OVERDUE</span>
+                          <span className="kanban-card__overdue">OVERDUE</span>
                         )}
                       </div>
                       <h4 className="kanban-card__title">{task.title}</h4>
@@ -174,6 +185,14 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
                       <div className="kanban-card__meta">
                         {task.project?.name && <span>{task.project.name}</span>}
                         {task.assignedTo?.name && <span>{task.assignedTo.name}</span>}
+                        {fromClient && (
+                          <span className="kanban-card__meta-client">Client assigned</span>
+                        )}
+                        {fromClient && task.createdAt && (
+                          <span className="kanban-card__meta-time" title="Client assigned time">
+                            {formatDateTime(task.createdAt)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
