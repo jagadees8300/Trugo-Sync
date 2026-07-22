@@ -7,6 +7,7 @@ import { User } from '../users/schemas/user.schema';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TaskTimeService } from './task-time.service';
 import { isDoneStatus, normalizeStatus, toApiStatus } from './task-status.util';
 import type { AuthUser } from '../auth/auth-user';
 import { isElevated, isClient } from '../auth/auth-user';
@@ -20,6 +21,7 @@ export class TasksService implements OnModuleInit {
     @InjectModel(Project.name) private projectModel: Model<Project>,
     @InjectModel(User.name) private userModel: Model<User>,
     private notificationsService: NotificationsService,
+    private taskTimeService: TaskTimeService,
   ) {}
 
   async onModuleInit() {
@@ -403,12 +405,61 @@ export class TasksService implements OnModuleInit {
     return this.findOne(saved._id.toString());
   }
 
+  /** Create multiple tasks (Team Status Excel grid assign). */
+  async createBulk(
+    items: CreateTaskDto[],
+    userId?: string,
+    requester?: Requester,
+  ): Promise<{ created: number; tasks: Task[] }> {
+    if (!items?.length) {
+      throw new BadRequestException('At least one task is required');
+    }
+    if (items.length > 50) {
+      throw new BadRequestException('Maximum 50 tasks per request');
+    }
+
+    const tasks: Task[] = [];
+    for (const item of items) {
+      if (!item.title?.trim()) {
+        throw new BadRequestException('Each task needs a title');
+      }
+      if (!item.assignedTo) {
+        throw new BadRequestException('Each task needs an assignee');
+      }
+      const created = await this.create(item, userId, requester);
+      tasks.push(created);
+    }
+    return { created: tasks.length, tasks };
+  }
+
+  private parseStartOfDay(dateStr?: string): Date | null {
+    if (!dateStr?.trim()) return null;
+    const d = new Date(dateStr.trim());
+    if (Number.isNaN(d.getTime())) return null;
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  private parseEndOfDay(dateStr?: string): Date | null {
+    if (!dateStr?.trim()) return null;
+    const d = new Date(dateStr.trim());
+    if (Number.isNaN(d.getTime())) return null;
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }
+
   async findAll(
     filters?: {
       status?: string;
       assignedTo?: string;
       project?: string;
       search?: string;
+      priority?: string;
+      overdue?: boolean;
+      deadlineFrom?: string;
+      deadlineTo?: string;
+      createdFrom?: string;
+      createdTo?: string;
     },
     requester?: Requester,
   ): Promise<Task[]> {
@@ -457,6 +508,43 @@ export class TasksService implements OnModuleInit {
         { title: { $regex: filters.search, $options: 'i' } },
         { description: { $regex: filters.search, $options: 'i' } },
       ];
+    }
+
+    if (filters?.priority && ['HIGH', 'MEDIUM', 'LOW'].includes(filters.priority)) {
+      query.priority = filters.priority;
+    }
+
+    if (filters?.overdue) {
+      const overdueDeadline = {
+        $exists: true,
+        $ne: null,
+        $lt: new Date(),
+      };
+      query.deadline = query.deadline
+        ? { ...(query.deadline as Record<string, unknown>), ...overdueDeadline }
+        : overdueDeadline;
+      if (!filters?.status || filters.status === 'ALL') {
+        query.status = { $nin: ['DONE', 'COMPLETED'] };
+      }
+    }
+
+    const deadlineFrom = this.parseStartOfDay(filters?.deadlineFrom);
+    const deadlineTo = this.parseEndOfDay(filters?.deadlineTo);
+    if (deadlineFrom || deadlineTo) {
+      const deadlineRange: Record<string, Date> = {};
+      if (deadlineFrom) deadlineRange.$gte = deadlineFrom;
+      if (deadlineTo) deadlineRange.$lte = deadlineTo;
+      query.deadline = query.deadline
+        ? { ...(query.deadline as Record<string, unknown>), ...deadlineRange }
+        : deadlineRange;
+    }
+
+    const createdFrom = this.parseStartOfDay(filters?.createdFrom);
+    const createdTo = this.parseEndOfDay(filters?.createdTo);
+    if (createdFrom || createdTo) {
+      query.createdAt = {};
+      if (createdFrom) (query.createdAt as Record<string, Date>).$gte = createdFrom;
+      if (createdTo) (query.createdAt as Record<string, Date>).$lte = createdTo;
     }
 
     const tasks = await this.taskModel.find(query).sort({ createdAt: -1 }).exec();
@@ -605,11 +693,34 @@ export class TasksService implements OnModuleInit {
     userId?: string,
     requester?: Requester,
   ): Promise<Task> {
+    const result = await this.moveWithTimer(id, status, userId, requester);
+    return result.task;
+  }
+
+  /**
+   * Move task status and sync timer (Kanban drag / Start / Complete / Reopen).
+   * To Do → In Progress = start, Done → In Progress = resume old time,
+   * In Progress → Done = stop.
+   */
+  async moveWithTimer(
+    id: string,
+    status: string,
+    userId?: string,
+    requester?: Requester,
+  ): Promise<{
+    task: Task;
+    timerSync: 'started' | 'resumed' | 'stopped' | null;
+    timer?: Awaited<ReturnType<TaskTimeService['getSummary']>>;
+  }> {
+    const existing = await this.taskModel.findById(id).lean();
+    if (!existing) throw new NotFoundException('Task not found');
+
+    const previousStatus = existing.status;
     const normalized = normalizeStatus(status) || status;
+    const actorId = userId ?? requester?.userId;
+
     if (isDoneStatus(normalized)) {
-      const task = await this.taskModel.findById(id).lean();
-      if (!task) throw new NotFoundException('Task not found');
-      const deps = task.dependsOn ?? [];
+      const deps = existing.dependsOn ?? [];
       if (deps.length) {
         const blockers = await this.taskModel
           .find({ _id: { $in: deps } })
@@ -623,7 +734,22 @@ export class TasksService implements OnModuleInit {
         }
       }
     }
-    return this.update(id, { status: normalized }, userId, requester);
+
+    const updated = await this.update(id, { status: normalized }, userId, requester);
+
+    const timerSync = await this.taskTimeService.syncWithTaskStatus(
+      id,
+      previousStatus,
+      normalized,
+      actorId,
+    );
+
+    let timer: Awaited<ReturnType<TaskTimeService['getSummary']>> | undefined;
+    if (requester && (timerSync || normalized === 'IN_PROGRESS')) {
+      timer = await this.taskTimeService.getSummary(id, requester as AuthUser);
+    }
+
+    return { task: updated, timerSync, ...(timer ? { timer } : {}) };
   }
 
   async getSubtasks(parentTaskId: string, requester?: Requester) {
@@ -777,6 +903,9 @@ export class TasksService implements OnModuleInit {
           },
         },
       },
+      { $addFields: { nameSort: { $toLower: { $ifNull: ['$name', ''] } } } },
+      { $sort: { nameSort: 1 } },
+      { $project: { nameSort: 0 } },
     ]);
     return results;
   }

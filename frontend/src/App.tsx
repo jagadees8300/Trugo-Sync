@@ -11,6 +11,7 @@ import Splash from './pages/Splash';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import CreateTask from './pages/CreateTask';
+import AssignTasksGrid from './pages/AssignTasksGrid';
 import TaskList from './pages/TaskList';
 import TaskDetails from './pages/TaskDetails';
 import ProjectProgressPage from './pages/ProjectProgress';
@@ -137,6 +138,14 @@ function App() {
             <ProtectedRoute>
               <CreateTask />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assign-tasks"
+          element={
+            <RoleRoute roles={['ADMIN', 'HR', 'PROJECT_MANAGER', 'TEAM_LEAD']}>
+              <AssignTasksGrid />
+            </RoleRoute>
           }
         />
         <Route

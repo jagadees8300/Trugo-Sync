@@ -289,6 +289,24 @@ if ($leaveId2) {
 Invoke-ApiTest -Name "GET /leaves/holidays" -Method GET -Path "/leaves/holidays" -Token $adminToken
 Invoke-ApiTest -Name "GET /leaves/balances/me" -Method GET -Path "/leaves/balances/me" -Token $gopiToken
 Invoke-ApiTest -Name "GET /attendance/me/today" -Method GET -Path "/attendance/me/today" -Token $gopiToken
+Invoke-ApiTest -Name "GET /attendance/office-config" -Method GET -Path "/attendance/office-config" -Token $gopiToken
+Invoke-ApiTest -Name "POST /attendance/check-location (at office)" -Method POST -Path "/attendance/check-location" -Token $gopiToken -Body @{
+  latitude = 11.669207222195348
+  longitude = 78.14333126167497
+}
+Invoke-ApiTest -Name "POST /attendance/check-location (outside)" -Method POST -Path "/attendance/check-location" -Token $gopiToken -Body @{
+  latitude = 11.65
+  longitude = 78.10
+} -Expect @(200)
+Invoke-ApiTest -Name "POST /attendance/clock-in (outside blocked)" -Method POST -Path "/attendance/clock-in" -Token $gopiToken -Body @{
+  latitude = 11.65
+  longitude = 78.10
+} -Expect @(400)
+Invoke-ApiTest -Name "POST /attendance/clock-in (at office)" -Method POST -Path "/attendance/clock-in" -Token $gopiToken -Body @{
+  latitude = 11.669207222195348
+  longitude = 78.14333126167497
+} -Expect @(200, 201, 400)
+Invoke-ApiTest -Name "POST /attendance/work-from-home (blocked if already in)" -Method POST -Path "/attendance/work-from-home" -Token $gopiToken -Body @{} -Expect @(200, 201, 400)
 Invoke-ApiTest -Name "GET /reports/leave" -Method GET -Path "/reports/leave" -Token $adminToken
 Invoke-ApiTest -Name "GET /reports/utilization" -Method GET -Path "/reports/utilization" -Token $adminToken
 Invoke-ApiTest -Name "GET /reports/projects" -Method GET -Path "/reports/projects" -Token $adminToken

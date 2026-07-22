@@ -98,6 +98,46 @@ export interface Task {
   updatedAt: string;
 }
 
+export interface TimeHoursLabel {
+  ms: number;
+  hours: number;
+  label: string;
+  hoursPart: number;
+  minutesPart: number;
+  secondsPart: number;
+}
+
+export interface TaskTimeSummary {
+  taskId: string;
+  totalMs: number;
+  total: TimeHoursLabel;
+  todayMs: number;
+  today: TimeHoursLabel;
+  daily: Array<{ date: string; ms: number; hours: TimeHoursLabel }>;
+  byUser: Array<{
+    userId: string;
+    name: string;
+    email?: string;
+    status: string;
+    totalMs: number;
+    total: TimeHoursLabel;
+    daily: Array<{ date: string; ms: number; hours: TimeHoursLabel }>;
+  }>;
+  myTimer: {
+    status: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED';
+    totalMs: number;
+    total: TimeHoursLabel;
+    runningSince: string | null;
+  };
+  canTrack: boolean;
+}
+
+export interface TaskMoveWithTimerResponse {
+  task: Task;
+  timerSync: 'started' | 'resumed' | 'stopped' | null;
+  timer?: TaskTimeSummary;
+}
+
 export interface Milestone {
   _id: string;
   projectId: string;
@@ -112,7 +152,7 @@ export interface Notification {
   userId: string;
   message: string;
   readStatus: boolean;
-  type: 'TASK_ASSIGNED' | 'OVERDUE' | 'COMMENT_ADDED' | 'LEAVE_SUBMITTED' | 'LEAVE_APPROVED' | 'LEAVE_REJECTED' | 'DOCUMENT_UPLOADED';
+  type: 'TASK_ASSIGNED' | 'OVERDUE' | 'COMMENT_ADDED' | 'LEAVE_SUBMITTED' | 'LEAVE_APPROVED' | 'LEAVE_REJECTED' | 'DOCUMENT_UPLOADED' | 'WORK_FROM_HOME' | 'ATTENDANCE_PAUSED' | 'ATTENDANCE_RESUMED';
   createdAt: string;
   senderId?: string | null;
   sender?: { _id: string; name: string; email?: string } | null;
@@ -228,6 +268,9 @@ export interface AttendancePunch {
   clockIn: string;
   clockOut?: string;
   note?: string;
+  workMode?: 'OFFICE' | 'WFH';
+  status?: 'WORKING' | 'PAUSED' | 'COMPLETED';
+  activePauseReason?: string | null;
   hours?: number | null;
 }
 

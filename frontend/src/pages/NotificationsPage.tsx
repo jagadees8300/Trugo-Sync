@@ -22,6 +22,12 @@ const typeLabel = (type: Notification['type']) => {
       return 'Leave rejected';
     case 'DOCUMENT_UPLOADED':
       return 'Document uploaded';
+    case 'WORK_FROM_HOME':
+      return 'Work from home';
+    case 'ATTENDANCE_PAUSED':
+      return 'Attendance paused';
+    case 'ATTENDANCE_RESUMED':
+      return 'Attendance resumed';
     default:
       return type;
   }

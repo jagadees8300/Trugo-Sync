@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Request, Delete, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -49,5 +49,20 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Return all users.' })
   async findAll() {
     return this.usersService.findAll();
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Delete a team member (admin only)' })
+  @ApiResponse({ status: 200, description: 'Team member deleted.' })
+  @ApiResponse({ status: 400, description: 'Cannot delete admin or own account.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  async remove(
+    @Param('id') id: string,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.usersService.remove(id, req.user.userId);
   }
 }

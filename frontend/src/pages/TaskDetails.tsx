@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Search, Send, AlertCircle, Pencil, Trash2 } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
+import TaskTimeTracker from '../components/TaskTimeTracker';
 import { projectsApi, tasksApi, usersApi } from '../services/api';
 import { getEntityId } from '../utils/id';
 import { isAdmin, isTaskOverdue, normalizeTaskStatus, formatDateTime } from '../utils/task';
@@ -52,6 +53,7 @@ const TaskDetails = () => {
     assignedTo: '',
     projectId: '',
   });
+  const [timeRefreshKey, setTimeRefreshKey] = useState(0);
 
   const loadTask = async () => {
     if (!id) return;
@@ -173,8 +175,10 @@ const TaskDetails = () => {
   const handleStart = async () => {
     if (!id) return;
     try {
-      const res = await tasksApi.updateStatus(id, 'IN_PROGRESS');
-      setTask(res.data);
+      // To Do → In Progress: POST move-with-timer → auto-starts timer
+      const res = await tasksApi.moveWithTimer(id, 'IN_PROGRESS');
+      setTask(res.data.task);
+      setTimeRefreshKey((k) => k + 1);
     } catch (err) {
       console.error('Failed to start task', err);
     }
@@ -183,8 +187,10 @@ const TaskDetails = () => {
   const handleReopen = async () => {
     if (!id) return;
     try {
-      const res = await tasksApi.updateStatus(id, 'TO_DO');
-      setTask(res.data);
+      // Done → In Progress: resume timer with previous TOTAL
+      const res = await tasksApi.moveWithTimer(id, 'IN_PROGRESS');
+      setTask(res.data.task);
+      setTimeRefreshKey((k) => k + 1);
     } catch (err) {
       console.error('Failed to reopen task', err);
     }
@@ -193,8 +199,10 @@ const TaskDetails = () => {
   const handleComplete = async () => {
     if (!id) return;
     try {
-      const res = await tasksApi.updateStatus(id, 'DONE');
-      setTask(res.data);
+      // In Progress → Done: auto-stops timer
+      const res = await tasksApi.moveWithTimer(id, 'DONE');
+      setTask(res.data.task);
+      setTimeRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -632,6 +640,15 @@ const TaskDetails = () => {
                 </button>
               )}
             </div>
+
+            {id && (
+              <TaskTimeTracker
+                key={`${id}-${timeRefreshKey}`}
+                taskId={id}
+                taskStatus={task.status}
+                onTaskMaybeUpdated={() => void loadTask()}
+              />
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 32 }}>
               {[

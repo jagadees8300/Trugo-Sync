@@ -6,6 +6,10 @@ import { Leave, LeaveSchema } from './schemas/leave.schema';
 import { LeaveBalance, LeaveBalanceSchema } from './schemas/leave-balance.schema';
 import { Holiday, HolidaySchema } from './schemas/holiday.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import {
+  AttendanceEntry,
+  AttendanceEntrySchema,
+} from '../attendance/schemas/attendance.schema';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
@@ -18,6 +22,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: LeaveBalance.name, schema: LeaveBalanceSchema },
       { name: Holiday.name, schema: HolidaySchema },
       { name: User.name, schema: UserSchema },
+      { name: AttendanceEntry.name, schema: AttendanceEntrySchema },
     ]),
   ],
   controllers: [LeaveController],

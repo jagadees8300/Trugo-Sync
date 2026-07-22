@@ -33,16 +33,28 @@ const formatTime = (iso: string) =>
     second: '2-digit',
   });
 
-const formatAttendanceTimes = (attendance?: { clockIn: string; clockOut?: string; hours?: number | null } | null) => {
+const formatAttendanceTimes = (attendance?: {
+  clockIn: string;
+  clockOut?: string;
+  hours?: number | null;
+  workMode?: 'OFFICE' | 'WFH';
+  status?: 'WORKING' | 'PAUSED' | 'COMPLETED';
+  activePauseReason?: string | null;
+} | null) => {
   if (!attendance?.clockIn) return null;
+  const modeLabel = attendance.workMode === 'WFH' ? ' · WFH' : '';
   const inTime = formatTime(attendance.clockIn);
+  if (!attendance.clockOut && attendance.status === 'PAUSED') {
+    const reason = attendance.activePauseReason ? ` (${attendance.activePauseReason})` : '';
+    return `In: ${inTime}${modeLabel} · Paused${reason}`;
+  }
   if (!attendance.clockOut) {
-    return `In: ${inTime} · Still working`;
+    return `In: ${inTime}${modeLabel} · Still working`;
   }
   const outTime = formatTime(attendance.clockOut);
   const hours =
     attendance.hours != null ? ` · ${attendance.hours}h` : '';
-  return `In: ${inTime} · Out: ${outTime}${hours}`;
+  return `In: ${inTime}${modeLabel} · Out: ${outTime}${hours}`;
 };
 
 const formatRange = (from: string, to: string, days: number) => {
@@ -211,7 +223,7 @@ const LeaveAttendancePage = () => {
               <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 8px' }}>
                 {c.label.toUpperCase()}
               </p>
-              <h2 style={{ margin: 0 }}>{loading ? '--' : String(c.value ?? 0).padStart(2, '0')}</h2>
+              <h2 style={{ margin: 0 }}>{loading ? '--' : (c.value ?? 0)}</h2>
             </div>
           ))}
         </div>

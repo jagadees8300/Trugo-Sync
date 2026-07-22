@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
@@ -8,21 +8,42 @@ import { User } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
 import { ALL_APP_ROLES, normalizeRole, type AppRole } from '../auth/auth-user';
+import { Project } from '../projects/schemas/project.schema';
+import { Task } from '../tasks/schemas/task.schema';
+import { Milestone } from '../projects/schemas/milestone.schema';
+import { Leave } from '../leave/schemas/leave.schema';
+import { LeaveBalance } from '../leave/schemas/leave-balance.schema';
+import { Notification } from '../notifications/schemas/notification.schema';
+import { AttendanceEntry } from '../attendance/schemas/attendance.schema';
+import { ProjectFile } from '../projects/schemas/project-file.schema';
+import { TaskTimeSession } from '../tasks/schemas/task-time-session.schema';
 
 const AVATAR_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 
 @Injectable()
 export class UsersService implements OnModuleInit {
-  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<User>,
+    @InjectModel(Project.name) private projectModel: Model<Project>,
+    @InjectModel(Task.name) private taskModel: Model<Task>,
+    @InjectModel(Milestone.name) private milestoneModel: Model<Milestone>,
+    @InjectModel(Leave.name) private leaveModel: Model<Leave>,
+    @InjectModel(LeaveBalance.name) private leaveBalanceModel: Model<LeaveBalance>,
+    @InjectModel(Notification.name) private notificationModel: Model<Notification>,
+    @InjectModel(AttendanceEntry.name) private attendanceModel: Model<AttendanceEntry>,
+    @InjectModel(ProjectFile.name) private projectFileModel: Model<ProjectFile>,
+    @InjectModel(TaskTimeSession.name) private taskTimeSessionModel: Model<TaskTimeSession>,
+  ) {}
 
   async onModuleInit() {
     await this.migrateLegacyRoles();
     await this.cleanupSmokeTestUsers();
+    await this.cleanupDuplicateUsers();
     await this.seedDefaultUsers();
   }
 
-  /** Remove smoke/test employees only — never delete Hari / Gopi / Jagadeeswaran. */
+  /** Remove smoke/test employees created by automated scripts. */
   private async cleanupSmokeTestUsers() {
     const result = await this.userModel.deleteMany({
       $or: [
@@ -50,7 +71,128 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  /** Seed core team: Admin + original employees (Hari, Gopi, Jagadeeswaran). */
+  private normalizeName(name: string) {
+    return name.trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  /** Merge duplicate staff rows by name, keep the oldest row, and rewire refs. */
+  private async cleanupDuplicateUsers() {
+    const users = await this.userModel
+      .find({ role: { $nin: ['ADMIN', 'CLIENT'] } })
+      .select('name email role createdAt')
+      .sort({ createdAt: 1, _id: 1 })
+      .lean();
+
+    const grouped = new Map<string, typeof users>();
+    for (const user of users) {
+      const key = this.normalizeName(user.name);
+      if (!key) continue;
+      const existing = grouped.get(key) ?? [];
+      existing.push(user);
+      grouped.set(key, existing);
+    }
+
+    let removedCount = 0;
+
+    for (const [, duplicates] of grouped) {
+      if (duplicates.length <= 1) continue;
+
+      const canonical = duplicates[0];
+      const duplicateIds = duplicates.slice(1).map((u) => new Types.ObjectId(String(u._id)));
+      const canonicalId = new Types.ObjectId(String(canonical._id));
+
+      await this.projectModel.updateMany(
+        { createdBy: { $in: duplicateIds } },
+        { $set: { createdBy: canonicalId } },
+      );
+      await this.projectModel.updateMany(
+        { clientUserId: { $in: duplicateIds } },
+        { $set: { clientUserId: canonicalId } },
+      );
+      await this.projectModel.updateMany(
+        { teamMembers: { $in: duplicateIds } },
+        { $addToSet: { teamMembers: canonicalId } },
+      );
+      await this.projectModel.updateMany(
+        { teamMembers: { $in: duplicateIds } },
+        { $pull: { teamMembers: { $in: duplicateIds } } as any },
+      );
+
+      await this.taskModel.updateMany(
+        { assignedTo: { $in: duplicateIds } },
+        { $set: { assignedTo: canonicalId } },
+      );
+      await this.taskModel.updateMany(
+        { createdBy: { $in: duplicateIds } },
+        { $set: { createdBy: canonicalId } },
+      );
+      await this.taskModel.updateMany(
+        { 'comments.user': { $in: duplicateIds } },
+        { $set: { 'comments.$[comment].user': canonicalId } },
+        { arrayFilters: [{ 'comment.user': { $in: duplicateIds } }] },
+      );
+      await this.taskModel.updateMany(
+        { 'history.changedBy': { $in: duplicateIds } },
+        { $set: { 'history.$[entry].changedBy': canonicalId } },
+        { arrayFilters: [{ 'entry.changedBy': { $in: duplicateIds } }] },
+      );
+
+      await this.milestoneModel.updateMany(
+        { assignees: { $in: duplicateIds } },
+        { $addToSet: { assignees: canonicalId } },
+      );
+      await this.milestoneModel.updateMany(
+        { assignees: { $in: duplicateIds } },
+        { $pull: { assignees: { $in: duplicateIds } } as any },
+      );
+
+      await this.leaveModel.updateMany(
+        { employeeId: { $in: duplicateIds } },
+        { $set: { employeeId: canonicalId } },
+      );
+      await this.leaveModel.updateMany(
+        { decidedBy: { $in: duplicateIds } },
+        { $set: { decidedBy: canonicalId } },
+      );
+      await this.leaveBalanceModel.updateMany(
+        { userId: { $in: duplicateIds } },
+        { $set: { userId: canonicalId } },
+      );
+      await this.notificationModel.updateMany(
+        { userId: { $in: duplicateIds } },
+        { $set: { userId: canonicalId } },
+      );
+      await this.notificationModel.updateMany(
+        { senderId: { $in: duplicateIds } },
+        { $set: { senderId: canonicalId } },
+      );
+      await this.notificationModel.updateMany(
+        { targetUserId: { $in: duplicateIds } },
+        { $set: { targetUserId: canonicalId } },
+      );
+      await this.attendanceModel.updateMany(
+        { userId: { $in: duplicateIds } },
+        { $set: { userId: canonicalId } },
+      );
+      await this.projectFileModel.updateMany(
+        { uploadedBy: { $in: duplicateIds } },
+        { $set: { uploadedBy: canonicalId } },
+      );
+      await this.taskTimeSessionModel.updateMany(
+        { userId: { $in: duplicateIds } },
+        { $set: { userId: canonicalId } },
+      );
+
+      const result = await this.userModel.deleteMany({ _id: { $in: duplicateIds } });
+      removedCount += result.deletedCount ?? 0;
+    }
+
+    if (removedCount > 0) {
+      console.log(`Removed ${removedCount} duplicate user record(s) from database`);
+    }
+  }
+
+  /** Seed admin account on first run. */
   private async seedDefaultUsers() {
     await this.userModel.updateOne(
       { email: 'admin@trugosync.com', role: { $ne: 'ADMIN' } },
@@ -70,27 +212,6 @@ export class UsersService implements OnModuleInit {
         password: 'password',
         role: 'ADMIN',
         designation: 'Administrator',
-      },
-      {
-        name: 'Hariharan',
-        email: 'hari@trugosync.com',
-        password: 'password',
-        role: 'EMPLOYEE',
-        designation: 'Senior Field Agent',
-      },
-      {
-        name: 'Gopinath',
-        email: 'gopi@trugosync.com',
-        password: 'password',
-        role: 'EMPLOYEE',
-        designation: 'Field Agent',
-      },
-      {
-        name: 'Jagadeeswaran',
-        email: 'jagadeeswaran0818@gmail.com',
-        password: 'password',
-        role: 'EMPLOYEE',
-        designation: 'Developer',
       },
     ];
 
@@ -168,6 +289,8 @@ export class UsersService implements OnModuleInit {
     const users = await this.userModel
       .find({ role: { $nin: ['ADMIN', 'CLIENT'] } })
       .select('name email')
+      .sort({ name: 1 })
+      .collation({ locale: 'en', strength: 2 })
       .lean();
     return users.map((u) => ({
       _id: u._id.toString(),
@@ -180,6 +303,8 @@ export class UsersService implements OnModuleInit {
     const users = await this.userModel
       .find({ role: 'CLIENT' })
       .select('name email')
+      .sort({ name: 1 })
+      .collation({ locale: 'en', strength: 2 })
       .lean();
     return users.map((u) => ({
       _id: u._id.toString(),
@@ -338,5 +463,74 @@ export class UsersService implements OnModuleInit {
     user.set('resetPasswordExpires', undefined);
     await user.save();
     return true;
+  }
+
+  /** Delete a team member (admin only). Cleans related refs; blocks ADMIN / self-delete. */
+  async remove(userId: string, requesterId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user id');
+    }
+    if (userId === requesterId) {
+      throw new BadRequestException('You cannot delete your own account');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const role = normalizeRole(user.role);
+    if (role === 'ADMIN') {
+      throw new BadRequestException('Admin accounts cannot be deleted');
+    }
+
+    const oid = new Types.ObjectId(userId);
+
+    await this.projectModel.updateMany(
+      { teamMembers: oid },
+      { $pull: { teamMembers: oid } },
+    );
+    await this.projectModel.updateMany(
+      { clientUserId: oid },
+      { $unset: { clientUserId: 1 } },
+    );
+    await this.projectModel.updateMany(
+      { createdBy: oid },
+      { $unset: { createdBy: 1 } },
+    );
+
+    await this.taskModel.updateMany(
+      { assignedTo: oid },
+      { $unset: { assignedTo: 1 } },
+    );
+    await this.taskModel.updateMany(
+      { createdBy: oid },
+      { $unset: { createdBy: 1 } },
+    );
+
+    await this.milestoneModel.updateMany(
+      { assignees: oid },
+      { $pull: { assignees: oid } },
+    );
+
+    await this.leaveModel.deleteMany({ employeeId: oid });
+    await this.leaveBalanceModel.deleteMany({ userId: oid });
+    await this.attendanceModel.deleteMany({ userId: oid });
+    await this.taskTimeSessionModel.deleteMany({ userId: oid });
+    await this.notificationModel.deleteMany({
+      $or: [{ userId: oid }, { senderId: oid }, { targetUserId: oid }],
+    });
+    await this.projectFileModel.updateMany(
+      { uploadedBy: oid },
+      { $unset: { uploadedBy: 1 } },
+    );
+
+    await this.userModel.findByIdAndDelete(oid);
+
+    return {
+      message: 'Team member deleted successfully',
+      id: userId,
+      name: user.name,
+    };
   }
 }

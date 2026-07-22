@@ -28,6 +28,15 @@ export function isDoneStatus(status: string): boolean {
   return status === 'DONE' || status === 'COMPLETED';
 }
 
+export function isTodoStatus(status: string): boolean {
+  const n = normalizeStatus(status) ?? status;
+  return n === 'TO_DO' || n === 'PENDING';
+}
+
+export function isInProgressStatus(status: string): boolean {
+  return (normalizeStatus(status) ?? status) === 'IN_PROGRESS';
+}
+
 /** Slugify a stage display name into a status key. */
 export function stageKeyFromName(name: string): string {
   return name

@@ -20,7 +20,6 @@ const personalCards: { key: keyof MyLeaveSummary; label: string }[] = [
 ];
 
 const LeaveSummaryCards = ({ stats, loading, variant = 'org' }: LeaveSummaryCardsProps) => {
-  const pad = (n: number) => String(n).padStart(2, '0');
   const cards = variant === 'personal' ? personalCards : orgCards;
 
   const getValue = (key: string) => {
@@ -42,7 +41,7 @@ const LeaveSummaryCards = ({ stats, loading, variant = 'org' }: LeaveSummaryCard
             {card.label.toUpperCase()}
           </p>
           <h2 style={{ margin: 0 }}>
-            {loading ? '--' : pad(getValue(card.key) ?? 0)}
+            {loading ? '--' : (getValue(card.key) ?? 0)}
           </h2>
         </div>
       ))}

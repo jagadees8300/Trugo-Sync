@@ -11,6 +11,8 @@ import type {
   ProjectDocumentFile,
   Notification,
   Milestone,
+  TaskTimeSummary,
+  TaskMoveWithTimerResponse,
 } from '../types';
 
 export const API_BASE_URL =
@@ -66,6 +68,8 @@ export const usersApi = {
     designation?: string;
     role?: string;
   }) => api.post<{ message: string; user: User }>('/users', data),
+  delete: (id: string) =>
+    api.delete<{ message: string; id: string; name: string }>(`/users/${id}`),
 };
 
 export const projectsApi = {
@@ -137,6 +141,12 @@ export const tasksApi = {
     project?: string;
     projectId?: string;
     search?: string;
+    priority?: string;
+    overdue?: string;
+    deadlineFrom?: string;
+    deadlineTo?: string;
+    createdFrom?: string;
+    createdTo?: string;
   }) => api.get<Task[]>('/tasks', { params }),
   getByUser: (userId: string, status?: string) =>
     api.get<Task[]>(`/tasks/user/${userId}`, { params: status ? { status } : undefined }),
@@ -155,13 +165,30 @@ export const tasksApi = {
     dependsOn?: string[];
     milestoneId?: string;
   }) => api.post<Task>('/tasks', data),
+  bulkCreate: (tasks: Array<{
+    title: string;
+    description?: string;
+    assignedTo: string;
+    projectId?: string;
+    project?: string;
+    priority?: string;
+    deadline?: string;
+  }>) =>
+    api.post<{ created: number; tasks: Task[] }>('/tasks/bulk', { tasks }),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch<Task>(`/tasks/${id}`, data),
   updateStatus: (id: string, status: string) =>
     api.patch<Task>(`/tasks/${id}/status`, { status }),
+  /** Kanban drag / Start / Complete / Reopen — status + auto timer start/stop/resume */
+  moveWithTimer: (id: string, status: string) =>
+    api.post<TaskMoveWithTimerResponse>(`/tasks/${id}/move-with-timer`, { status }),
   addComment: (id: string, text: string) =>
     api.post<Task>(`/tasks/${id}/comments`, { text }),
   delete: (id: string) => api.delete(`/tasks/${id}`),
+  getTime: (id: string) => api.get<TaskTimeSummary>(`/tasks/${id}/time`),
+  startTime: (id: string) => api.post<TaskTimeSummary>(`/tasks/${id}/time/start`),
+  pauseTime: (id: string) => api.post<TaskTimeSummary>(`/tasks/${id}/time/pause`),
+  stopTime: (id: string) => api.post<TaskTimeSummary>(`/tasks/${id}/time/stop`),
 };
 
 export const notificationsApi = {
@@ -191,6 +218,7 @@ export const dashboardApi = {
 };
 
 export { leaveApi } from './leaveService';
+export { attendanceApi } from './attendanceService';
 export type {
   LeaveRequest,
   LeaveDashboard,
@@ -198,5 +226,10 @@ export type {
   LeaveHistoryItem,
   EmployeeLeaveHistory,
 } from '../types';
+export type {
+  AttendanceEntry,
+  LocationCheckResult,
+  OfficeGeoConfig,
+} from './attendanceService';
 
 export default api;

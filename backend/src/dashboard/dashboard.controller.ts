@@ -28,7 +28,9 @@ export class DashboardController {
 
   @Get('team-status')
   @Roles('ADMIN', 'HR', 'PROJECT_MANAGER', 'TEAM_LEAD')
-  @ApiOperation({ summary: 'Get per-user task breakdown' })
+  @ApiOperation({
+    summary: 'Get per-user task breakdown (alphabetical by name A→Z)',
+  })
   getTeamStatus() {
     return this.dashboardService.getTeamStatus();
   }

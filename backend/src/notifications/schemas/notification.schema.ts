@@ -10,7 +10,10 @@ export type NotificationType =
   | 'LEAVE_SUBMITTED'
   | 'LEAVE_APPROVED'
   | 'LEAVE_REJECTED'
-  | 'DOCUMENT_UPLOADED';
+  | 'DOCUMENT_UPLOADED'
+  | 'WORK_FROM_HOME'
+  | 'ATTENDANCE_PAUSED'
+  | 'ATTENDANCE_RESUMED';
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false } })
 export class Notification {
@@ -41,6 +44,9 @@ export class Notification {
       'LEAVE_APPROVED',
       'LEAVE_REJECTED',
       'DOCUMENT_UPLOADED',
+      'WORK_FROM_HOME',
+      'ATTENDANCE_PAUSED',
+      'ATTENDANCE_RESUMED',
     ],
   })
   type: NotificationType;

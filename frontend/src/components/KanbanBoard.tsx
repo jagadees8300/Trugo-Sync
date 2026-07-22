@@ -83,9 +83,23 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
     setUpdatingId(taskId);
 
     try {
-      const res = await tasksApi.updateStatus(taskId, status);
-      onTasksChange(tasks.map((t) => (t._id === taskId ? res.data : t)));
-    } catch {
+      // POST /tasks/:id/move-with-timer — auto start on In Progress, stop on Done
+      const res = await tasksApi.moveWithTimer(taskId, status);
+      onTasksChange(previous.map((t) => (t._id === taskId ? res.data.task : t)));
+
+      // Guarantee timer is running for the current user after drag → In Progress
+      if (
+        normalizeTaskStatus(status) === 'IN_PROGRESS' &&
+        res.data.timer?.myTimer?.status !== 'RUNNING'
+      ) {
+        try {
+          await tasksApi.startTime(taskId);
+        } catch (timerErr) {
+          console.warn('Auto-start timer after Kanban move failed', timerErr);
+        }
+      }
+    } catch (err) {
+      console.error('Kanban move-with-timer failed', err);
       onTasksChange(previous);
     } finally {
       setUpdatingId(null);

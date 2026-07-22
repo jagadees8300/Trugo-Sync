@@ -9,11 +9,13 @@ import {
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { LeaveModule } from '../leave/leave.module';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     AuthModule,
     LeaveModule,
+    NotificationsModule,
     MongooseModule.forFeature([
       { name: AttendanceEntry.name, schema: AttendanceEntrySchema },
       { name: User.name, schema: UserSchema },

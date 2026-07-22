@@ -550,6 +550,19 @@ p {
   white-space: nowrap;
 }
 
+.kanban-card__timer-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #166534;
+  background: #dcfce7;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
 .kanban-card--client-high {
   border: 2px solid #ef4444;
   background: #fff7f7;
@@ -611,7 +624,7 @@ p {
 
 .kanban-card__title {
   margin: 0 0 6px;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -623,6 +636,7 @@ p {
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

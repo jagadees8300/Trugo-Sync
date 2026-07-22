@@ -5,15 +5,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import type { AuthUser } from '../auth/auth-user';
-import { IsOptional, IsString } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
-
-class ClockInDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  note?: string;
-}
+import { ClockInDto } from './dto/clock-in.dto';
+import { CheckLocationDto } from './dto/check-location.dto';
+import { WorkFromHomeDto } from './dto/work-from-home.dto';
+import { PauseAttendanceDto } from './dto/pause-attendance.dto';
 
 @ApiTags('attendance')
 @ApiBearerAuth('JWT-auth')
@@ -22,10 +17,48 @@ class ClockInDto {
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
+  @Get('office-config')
+  @ApiOperation({ summary: 'Office GPS geofence settings (for clock-in)' })
+  getOfficeConfig() {
+    return this.attendanceService.getOfficeConfig();
+  }
+
+  @Post('check-location')
+  @ApiOperation({ summary: 'Check if GPS is within office radius (no clock-in)' })
+  checkLocation(@Body() dto: CheckLocationDto) {
+    return this.attendanceService.checkLocation(dto.latitude, dto.longitude);
+  }
+
   @Post('clock-in')
-  @ApiOperation({ summary: 'Clock in for today' })
+  @ApiOperation({ summary: 'Clock in for today (GPS must be within office radius)' })
   clockIn(@Request() req: { user: AuthUser }, @Body() dto: ClockInDto) {
-    return this.attendanceService.clockIn(req.user.userId, dto.note);
+    return this.attendanceService.clockIn(
+      req.user.userId,
+      dto.latitude,
+      dto.longitude,
+      dto.note,
+    );
+  }
+
+  @Post('work-from-home')
+  @ApiOperation({ summary: 'Clock in for today as work from home (no GPS)' })
+  clockInWorkFromHome(
+    @Request() req: { user: AuthUser },
+    @Body() dto: WorkFromHomeDto,
+  ) {
+    return this.attendanceService.clockInWorkFromHome(req.user.userId, dto.note);
+  }
+
+  @Post('pause')
+  @ApiOperation({ summary: 'Pause attendance for today (optional reason)' })
+  pause(@Request() req: { user: AuthUser }, @Body() dto: PauseAttendanceDto) {
+    return this.attendanceService.pause(req.user.userId, dto.reason);
+  }
+
+  @Post('resume')
+  @ApiOperation({ summary: 'Resume attendance after pause' })
+  resume(@Request() req: { user: AuthUser }) {
+    return this.attendanceService.resume(req.user.userId);
   }
 
   @Post('clock-out')

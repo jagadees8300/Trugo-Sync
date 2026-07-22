@@ -14,6 +14,10 @@ import {
 } from './schemas/leave-balance.schema';
 import { Holiday, HolidayDocument } from './schemas/holiday.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
+import {
+  AttendanceEntry,
+  AttendanceEntryDocument,
+} from '../attendance/schemas/attendance.schema';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
 import { UpdateLeaveBalanceDto } from './dto/update-leave-balance.dto';
@@ -29,6 +33,9 @@ const DEFAULT_ALLOCATIONS: Record<Exclude<LeaveType, 'UNPAID'>, number> = {
 
 const PAID_TYPES: LeaveType[] = ['CASUAL', 'SICK', 'EARNED'];
 
+/** Staff who appear in Team Overview / Present Today (not Admin or Client). */
+const STAFF_ROLES = ['HR', 'PROJECT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE'] as const;
+
 @Injectable()
 export class LeaveService implements OnModuleInit {
   constructor(
@@ -37,6 +44,8 @@ export class LeaveService implements OnModuleInit {
     private balanceModel: Model<LeaveBalanceDocument>,
     @InjectModel(Holiday.name) private holidayModel: Model<HolidayDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(AttendanceEntry.name)
+    private attendanceModel: Model<AttendanceEntryDocument>,
     private notificationsService: NotificationsService,
   ) {}
 
@@ -502,12 +511,11 @@ export class LeaveService implements OnModuleInit {
     const today = this.startOfDay(new Date());
     const endToday = this.endOfDay(new Date());
 
-    const employees = await this.userModel.find().select('_id role').lean();
-    const employeeIds = employees
-      .filter((u) => u.role !== 'ADMIN')
-      .map((u) => u._id);
-    const totalEmployees =
-      employeeIds.length > 0 ? employeeIds.length : employees.length;
+    const staff = await this.userModel
+      .find({ role: { $in: [...STAFF_ROLES] } })
+      .select('_id')
+      .lean();
+    const staffIds = new Set(staff.map((u) => u._id.toString()));
 
     const onLeaveDocs = await this.leaveModel
       .find({
@@ -518,12 +526,34 @@ export class LeaveService implements OnModuleInit {
       .select('employeeId')
       .lean();
 
-    const onLeaveIds = new Set(onLeaveDocs.map((l) => l.employeeId.toString()));
+    const onLeaveIds = new Set(
+      onLeaveDocs
+        .map((l) => l.employeeId?.toString?.() ?? String(l.employeeId))
+        .filter((id) => staffIds.has(id)),
+    );
     const onLeave = onLeaveIds.size;
     const pending = await this.leaveModel.countDocuments({ status: 'Pending' });
-    const present = Math.max(0, totalEmployees - onLeave);
 
-    return { present, absent: 0, onLeave, pending };
+    // Present = staff who manually clocked in today only (not total employees)
+    const punches = await this.attendanceModel
+      .find({
+        date: today,
+        clockIn: { $exists: true },
+      })
+      .select('userId')
+      .lean();
+
+    const clockedIds = new Set<string>();
+    for (const punch of punches) {
+      const id = punch.userId?.toString?.() ?? String(punch.userId);
+      if (staffIds.has(id) && !onLeaveIds.has(id)) {
+        clockedIds.add(id);
+      }
+    }
+    const present = clockedIds.size;
+    const absent = Math.max(0, staffIds.size - onLeave - present);
+
+    return { present, absent, onLeave, pending };
   }
 
   async getByDate(date: string) {
@@ -566,7 +596,7 @@ export class LeaveService implements OnModuleInit {
     const holiday = await this.holidayModel.findOne({ date: dayStart }).lean();
 
     const employees = await this.userModel
-      .find({ role: { $nin: ['ADMIN'] } })
+      .find({ role: { $in: [...STAFF_ROLES] } })
       .select('name email designation role')
       .sort({ name: 1 })
       .lean();

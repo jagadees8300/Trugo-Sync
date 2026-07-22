@@ -44,6 +44,16 @@ const Splash = () => {
         <p style={{ color: '#888', fontSize: '14px', margin: 0 }}>
           Productivity Redefined
         </p>
+        <p
+          style={{
+            color: '#ff9800',
+            fontSize: '18px',
+            margin: '14px 0 0',
+            fontWeight: 600,
+          }}
+        >
+          👆 Tap logo to continue
+        </p>
       </div>
 
       <div

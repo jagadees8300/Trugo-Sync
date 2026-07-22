@@ -54,7 +54,11 @@ const Dashboard = () => {
         ]);
 
         setStats(statsRes.data);
-        setTeam(teamRes.data);
+        setTeam(
+          [...(teamRes.data ?? [])].sort((a, b) =>
+            (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }),
+          ),
+        );
         setProjects(projectsRes.data);
         setDeadlines(deadlinesRes.data);
         if (meRes) {
@@ -226,6 +230,7 @@ const Dashboard = () => {
                 <div
                   style={{ cursor: 'pointer' }}
                   onClick={() => navigate(`/tasks/user/${String(member.userId)}`)}
+                  title="View all tasks"
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
