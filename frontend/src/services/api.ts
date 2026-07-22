@@ -34,6 +34,28 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const url = String(error?.config?.url || '');
+    const isAuthRoute =
+      url.includes('/auth/login') ||
+      url.includes('/auth/forgot-password') ||
+      url.includes('/auth/reset-password');
+
+    if (status === 401 && !isAuthRoute && typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      const path = window.location.pathname;
+      if (!path.startsWith('/login') && !path.startsWith('/forgot-password') && !path.startsWith('/reset')) {
+        window.location.assign('/login');
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<{ access_token: string; user: User }>('/auth/login', { email, password }),

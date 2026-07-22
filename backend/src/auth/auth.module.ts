@@ -15,7 +15,10 @@ import { RolesGuard } from './roles.guard';
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'super-secret',
-      signOptions: { expiresIn: '60m' },
+      // Default 12h work day; override with JWT_EXPIRES_IN (e.g. 8h, 24h)
+      signOptions: {
+        expiresIn: (process.env.JWT_EXPIRES_IN || '12h') as `${number}h` | `${number}m` | number,
+      },
     }),
   ],
   providers: [AuthService, JwtStrategy, RolesGuard],

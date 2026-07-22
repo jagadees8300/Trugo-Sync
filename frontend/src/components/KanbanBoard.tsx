@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GripVertical, Plus } from 'lucide-react';
 import { tasksApi } from '../services/api';
@@ -10,6 +10,9 @@ const BASE_COLUMNS: { key: TaskStatus; label: string; color: string }[] = [
   { key: 'IN_PROGRESS', label: 'In Progress', color: '#f59e0b' },
   { key: 'DONE', label: 'Done', color: '#10b981' },
 ];
+
+/** Ignore tiny pointer jitter so a click is not treated as a drag. */
+const DRAG_THRESHOLD_PX = 8;
 
 const priorityStyle = (priority: string) => {
   if (priority === 'HIGH') return { bg: '#fee2e2', color: '#b91c1c' };
@@ -29,11 +32,44 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [didDrag, setDidDrag] = useState(false);
   const [showStageForm, setShowStageForm] = useState(false);
   const [stageName, setStageName] = useState('');
   const [addingStage, setAddingStage] = useState(false);
   const [stageError, setStageError] = useState('');
+
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  /** True only after the pointer moved past the drag threshold (or a drop completed). */
+  const suppressClickRef = useRef(false);
+
+  const resetDragUi = () => {
+    setDraggingId(null);
+    setDropTarget(null);
+    pointerStartRef.current = null;
+  };
+
+  useEffect(() => {
+    const clearStuckDrag = () => {
+      resetDragUi();
+      // Allow the next click after tab focus / visibility return
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') clearStuckDrag();
+    };
+
+    window.addEventListener('blur', clearStuckDrag);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('dragend', clearStuckDrag);
+
+    return () => {
+      window.removeEventListener('blur', clearStuckDrag);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('dragend', clearStuckDrag);
+    };
+  }, []);
 
   const columns = useMemo(() => {
     const custom = [...stages]
@@ -42,17 +78,36 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
     return [...BASE_COLUMNS, ...custom];
   }, [stages]);
 
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerStartRef.current = { x: e.clientX, y: e.clientY };
+    suppressClickRef.current = false;
+  };
+
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData('text/task-id', taskId);
     e.dataTransfer.effectAllowed = 'move';
     setDraggingId(taskId);
-    setDidDrag(false);
+    suppressClickRef.current = false;
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    // Browsers fire a final drag event at 0,0 — ignore it
+    if (e.clientX === 0 && e.clientY === 0) return;
+    const start = pointerStartRef.current;
+    if (!start) return;
+    const dx = Math.abs(e.clientX - start.x);
+    const dy = Math.abs(e.clientY - start.y);
+    if (dx > DRAG_THRESHOLD_PX || dy > DRAG_THRESHOLD_PX) {
+      suppressClickRef.current = true;
+    }
   };
 
   const handleDragEnd = () => {
-    setDraggingId(null);
-    setDropTarget(null);
-    setTimeout(() => setDidDrag(false), 0);
+    resetDragUi();
+    // Click often fires right after dragend — keep suppress briefly, then clear
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 80);
   };
 
   const handleDragOver = (e: React.DragEvent, status: TaskStatus) => {
@@ -71,13 +126,17 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
   const handleDrop = async (e: React.DragEvent, status: TaskStatus) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/task-id');
-    setDraggingId(null);
-    setDropTarget(null);
+    suppressClickRef.current = true;
+    resetDragUi();
 
     const task = tasks.find((t) => t._id === taskId);
-    if (!task || normalizeTaskStatus(task.status) === status) return;
+    if (!task || normalizeTaskStatus(task.status) === status) {
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 80);
+      return;
+    }
 
-    setDidDrag(true);
     const previous = tasks;
     onTasksChange(tasks.map((t) => (t._id === taskId ? { ...t, status } : t)));
     setUpdatingId(taskId);
@@ -103,7 +162,15 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
       onTasksChange(previous);
     } finally {
       setUpdatingId(null);
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 80);
     }
+  };
+
+  const openTask = (taskId: string) => {
+    if (suppressClickRef.current || updatingId === taskId) return;
+    navigate(`/tasks/${taskId}`);
   };
 
   const columnTasks = (status: TaskStatus) =>
@@ -169,11 +236,19 @@ const KanbanBoard = ({ tasks, onTasksChange, stages = [], onAddStage }: KanbanBo
                       key={task._id}
                       className={`kanban-card ${isDragging ? 'kanban-card--dragging' : ''} ${isUpdating ? 'kanban-card--updating' : ''} ${overdue ? 'kanban-card--overdue' : ''} ${highFromClient ? 'kanban-card--client-high' : ''}`}
                       draggable={!isUpdating}
+                      onPointerDown={handlePointerDown}
                       onDragStart={(e) => handleDragStart(e, task._id)}
+                      onDrag={handleDrag}
                       onDragEnd={handleDragEnd}
-                      onClick={() => {
-                        if (!didDrag) navigate(`/tasks/${task._id}`);
+                      onClick={() => openTask(task._id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openTask(task._id);
+                        }
                       }}
+                      role="button"
+                      tabIndex={0}
                     >
                       <div className="kanban-card__top">
                         <div className="kanban-card__top-left">
