@@ -81,6 +81,7 @@ export const authApi = {
 
 export const usersApi = {
   getAll: () => api.get<User[]>('/users'),
+  getById: (id: string) => api.get<User>(`/users/${id}`),
   getAssignees: () => api.get<User[]>('/users/assignees'),
   getClients: () => api.get<User[]>('/users/clients'),
   create: (data: {
@@ -90,6 +91,16 @@ export const usersApi = {
     designation?: string;
     role?: string;
   }) => api.post<{ message: string; user: User }>('/users', data),
+  update: (
+    id: string,
+    data: {
+      name?: string;
+      email?: string;
+      designation?: string;
+      role?: string;
+      password?: string;
+    },
+  ) => api.patch<{ message: string; user: User }>(`/users/${id}`, data),
   delete: (id: string) =>
     api.delete<{ message: string; id: string; name: string }>(`/users/${id}`),
 };

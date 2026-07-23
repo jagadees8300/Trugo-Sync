@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Mail, Lock, Eye, EyeOff, User, Users, Briefcase, UserCog, Trash2 } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, Eye, EyeOff, User, Users, Briefcase, UserCog, Trash2, Pencil, Download } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 import { usersApi } from '../services/api';
 import { ALL_APP_ROLES, ROLE_LABELS, type AppRole, type User as UserType } from '../types';
+import { downloadTeamMembersExcel } from '../utils/exportTeamExcel';
 
 const resolveRole = (user: UserType): string => {
   if (typeof user.role === 'string') return user.role;
@@ -404,14 +405,46 @@ const CreateEmployee = () => {
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
+                        gap: 8,
+                        flexWrap: 'wrap',
                       }}
                     >
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>
                         All team members
                       </span>
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {memberCount} name{memberCount === 1 ? '' : 's'}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                          {memberCount} name{memberCount === 1 ? '' : 's'}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={teamMembers.length === 0}
+                          onClick={() => {
+                            const date = new Date().toISOString().slice(0, 10);
+                            downloadTeamMembersExcel(
+                              teamMembers,
+                              `trugo-team-members-${date}.xlsx`,
+                            );
+                          }}
+                          title="Download team list as Excel"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 10px',
+                            borderRadius: 8,
+                            border: '1px solid #fed7aa',
+                            background: teamMembers.length === 0 ? '#f8fafc' : '#fff7ed',
+                            color: teamMembers.length === 0 ? '#94a3b8' : 'var(--primary)',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: teamMembers.length === 0 ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          <Download size={14} />
+                          Excel
+                        </button>
+                      </div>
                     </div>
 
                     {teamMembers.length === 0 ? (
@@ -453,7 +486,22 @@ const CreateEmployee = () => {
                                 >
                                   {(member.name || '?').charAt(0).toUpperCase()}
                                 </div>
-                                <div style={{ minWidth: 0 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const mid = member._id || member.id;
+                                    if (mid) navigate(`/employees/${mid}`);
+                                  }}
+                                  title="Edit employee"
+                                  style={{
+                                    minWidth: 0,
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                  }}
+                                >
                                   <p
                                     style={{
                                       margin: 0,
@@ -481,7 +529,7 @@ const CreateEmployee = () => {
                                   >
                                     {member.email}
                                   </p>
-                                </div>
+                                </button>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                                 <span
@@ -497,6 +545,29 @@ const CreateEmployee = () => {
                                 >
                                   {roleLabel}
                                 </span>
+                                <button
+                                  type="button"
+                                  title={`Edit ${member.name}`}
+                                  onClick={() => {
+                                    const mid = member._id || member.id;
+                                    if (mid) navigate(`/employees/${mid}`);
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: 8,
+                                    border: '1px solid #fed7aa',
+                                    background: '#fff7ed',
+                                    color: 'var(--primary)',
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                  }}
+                                >
+                                  <Pencil size={14} />
+                                </button>
                                 <button
                                   type="button"
                                   title={`Delete ${member.name}`}

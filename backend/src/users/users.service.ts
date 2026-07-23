@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
 import { User } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { LoginDto } from './dto/login.dto';
 import { ALL_APP_ROLES, normalizeRole, type AppRole } from '../auth/auth-user';
 import { Project } from '../projects/schemas/project.schema';
@@ -315,6 +316,106 @@ export class UsersService implements OnModuleInit {
 
   async findById(id: string): Promise<User | null> {
     return this.userModel.findById(id).select('-password').exec();
+  }
+
+  /** Admin: get one user (no password). */
+  async findOneForAdmin(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid user id');
+    }
+    const user = await this.userModel.findById(id).select('-password').lean();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
+  }
+
+  /** Admin: update team member name, email, role, designation, optional password. */
+  async updateByAdmin(userId: string, dto: UpdateUserDto, requesterId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user id');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const currentRole = normalizeRole(user.role);
+    if (currentRole === 'ADMIN' && userId !== requesterId) {
+      throw new BadRequestException('Other admin accounts cannot be edited');
+    }
+
+    if (dto.email !== undefined) {
+      const email = dto.email.trim().toLowerCase();
+      if (!email) {
+        throw new BadRequestException('Email is required');
+      }
+      const existing = await this.userModel.findOne({
+        email,
+        _id: { $ne: user._id },
+      });
+      if (existing) {
+        throw new ConflictException('Email already in use');
+      }
+      user.email = email;
+    }
+
+    if (dto.name !== undefined) {
+      const name = dto.name.trim();
+      if (!name) {
+        throw new BadRequestException('Name is required');
+      }
+      user.name = name;
+    }
+
+    if (dto.designation !== undefined) {
+      const designation = dto.designation.trim();
+      user.designation = designation || undefined;
+    }
+
+    if (dto.role !== undefined) {
+      if (!ALL_APP_ROLES.includes(dto.role)) {
+        throw new BadRequestException('Invalid role');
+      }
+      // Do not demote/promote another user into a conflicting admin self-lock; allow ADMIN role only carefully
+      if (dto.role !== 'ADMIN' && userId === requesterId && currentRole === 'ADMIN') {
+        throw new BadRequestException('You cannot remove your own admin role');
+      }
+      user.role = dto.role;
+    }
+
+    if (dto.password !== undefined && dto.password.trim()) {
+      const salt = await bcrypt.genSalt();
+      user.password = await bcrypt.hash(dto.password.trim(), salt);
+      user.set('resetPasswordToken', undefined);
+      user.set('resetPasswordExpires', undefined);
+    }
+
+    try {
+      await user.save();
+    } catch (err: unknown) {
+      if (
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code: number }).code === 11000
+      ) {
+        throw new ConflictException('Email already in use');
+      }
+      throw err;
+    }
+
+    return {
+      message: 'Employee updated successfully',
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        designation: user.designation,
+      },
+    };
   }
 
   async updateProfile(

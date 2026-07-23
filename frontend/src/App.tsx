@@ -22,6 +22,7 @@ import MyLeavePage from './pages/MyLeavePage';
 import HolidaysPage from './pages/HolidaysPage';
 import ReportsPage from './pages/ReportsPage';
 import CreateEmployee from './pages/CreateEmployee';
+import EditEmployee from './pages/EditEmployee';
 import Profile from './pages/Profile';
 import NotificationsPage from './pages/NotificationsPage';
 
@@ -185,6 +186,14 @@ function App() {
           element={
             <RoleRoute roles={['ADMIN']}>
               <CreateEmployee />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/employees/:id"
+          element={
+            <RoleRoute roles={['ADMIN']}>
+              <EditEmployee />
             </RoleRoute>
           }
         />
